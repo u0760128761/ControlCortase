@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ControlCortase</string>
+    <string name="title_activity_control">Управление Мотором</string>
+    <string name="btn_scan">Сканировать</string>
+    <string name="btn_connect">Подключиться</string>
+    <string name="status_disconnected">Отключено</string>
+    <string name="status_connected">Подключено</string>
+    <string name="status_connecting">Подключение...</string>
+    <string name="label_m1">Мотор 1</string>
+    <string name="label_m2">Мотор 2</string>
+    <string name="btn_forward">Вперед</string>
+    <string name="btn_backward">Назад</string>
+    <string name="btn_stop">Стоп</string>
+    <string name="label_speed">Скорость: 0%</string>
+    <string name="hint_log">Лог...</string>
+    <string name="error_bluetooth_not_supported">Bluetooth не поддерживается</string>
+    <string name="error_connect_failed">Ошибка подключения</string>
+    <!-- New Strings -->
+    <string name="btn_language">Язык / Language / Idioma</string>
+    <string name="btn_docs">Документация</string>
+</resources>

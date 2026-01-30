@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">ControlCortase</string>
+    <string name="title_activity_control">Motor Control</string>
+    <string name="btn_scan">Scan Devices</string>
+    <string name="btn_connect">Connect</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_connecting">Connecting...</string>
+    <string name="label_m1">Motor 1</string>
+    <string name="label_m2">Motor 2</string>
+    <string name="btn_forward">Forward</string>
+    <string name="btn_backward">Backward</string>
+    <string name="btn_stop">Stop</string>
+    <string name="label_speed">Speed: 0%</string>
+    <string name="hint_log">Log...</string>
+    <string name="error_bluetooth_not_supported">Bluetooth not supported</string>
+    <string name="error_connect_failed">Connection failed</string>
+    <string name="btn_language">Language / Язык / Idioma</string>
+    <string name="btn_docs">Documentation</string>
+</resources>
