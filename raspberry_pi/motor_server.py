@@ -409,11 +409,19 @@ HTML_TEMPLATE = """
                 <div class="motor-info">
                     <div class="motor-side">
                         <div data-t="m_left">Левый мотор</div>
-                        <div class="motor-pins">GPIO 17, 18, 23</div>
+                        <div class="motor-pins">
+                            <span data-t="pin_fwd">Fwd</span>:17, 
+                            <span data-t="pin_bwd">Bwd</span>:18, 
+                            <span data-t="pin_spd">Spd</span>:23
+                        </div>
                     </div>
                     <div class="motor-side">
                         <div data-t="m_right">Правый мотор</div>
-                        <div class="motor-pins">GPIO 27, 22, 24</div>
+                        <div class="motor-pins">
+                            <span data-t="pin_fwd">Fwd</span>:27, 
+                            <span data-t="pin_bwd">Bwd</span>:22, 
+                            <span data-t="pin_spd">Spd</span>:24
+                        </div>
                     </div>
                 </div>
             </div>
@@ -481,7 +489,10 @@ HTML_TEMPLATE = """
                 modal_update_title: "Обновление системы",
                 rebooting_title: "Система перезагружается...",
                 rebooting_msg: "Пожалуйста, подождите. Страница обновится автоматически.",
-                error_update: "Ошибка при запуске обновления"
+                error_update: "Ошибка при запуске обновления",
+                pin_fwd: "Вперед",
+                pin_bwd: "Назад",
+                pin_spd: "Скорость"
             },
             en: {
                 app_name: "Control Cortase",
@@ -502,7 +513,10 @@ HTML_TEMPLATE = """
                 modal_update_title: "System Update",
                 rebooting_title: "System Rebooting...",
                 rebooting_msg: "Please wait. Page will reload automatically.",
-                error_update: "Error starting update"
+                error_update: "Error starting update",
+                pin_fwd: "Fwd",
+                pin_bwd: "Bwd",
+                pin_spd: "Spd"
             },
             es: {
                 app_name: "Control Cortase",
@@ -523,7 +537,10 @@ HTML_TEMPLATE = """
                 modal_update_title: "Actualización del Sistema",
                 rebooting_title: "Sistema Reiniciando...",
                 rebooting_msg: "Por favor, espere. La página se recargará automáticamente.",
-                error_update: "Error al iniciar la actualización"
+                error_update: "Error al iniciar la actualización",
+                pin_fwd: "Avance",
+                pin_bwd: "Retro",
+                pin_spd: "Veloc"
             }
         };
 
