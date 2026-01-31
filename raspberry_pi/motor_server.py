@@ -39,6 +39,18 @@ current_speed = 50 # Default 0-100 duty cycle (will map from 0-255 input)
 # --- Global State for Web Interface ---
 BT_STATUS = "Disconnected"
 BT_CLIENT_INFO = None
+BT_DEVICE_NAME = None
+
+def get_bt_device_name(mac):
+    try:
+        # Resolve MAC address to a friendly name using bluetoothctl
+        result = subprocess.run(["bluetoothctl", "info", mac], capture_output=True, text=True, timeout=2)
+        for line in result.stdout.splitlines():
+            if "Name:" in line:
+                return line.split("Name:")[1].strip()
+    except Exception as e:
+        print(f"Error resolving BT name: {e}")
+    return "Unknown Device"
 
 app = Flask(__name__)
 
@@ -48,7 +60,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <title>Motor Server Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <style>
         :root {
             --primary: #26c6da;
@@ -59,6 +71,7 @@ HTML_TEMPLATE = """
             --text-sub: #78909c;
             --success: #66bb6a;
             --danger: #ef5350;
+            --warning: #ffa726;
             --shadow: 0 10px 25px rgba(0,0,0,0.05);
         }
         
@@ -71,196 +84,295 @@ HTML_TEMPLATE = """
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
+            overflow-x: hidden;
         }
 
+        /* Header */
         .header {
             width: 100%;
             background: var(--primary);
             color: white;
-            padding: 40px 0 60px 0;
+            padding: 20px 0 30px 0;
             text-align: center;
             border-radius: 0 0 30px 30px;
             box-shadow: 0 4px 15px rgba(38, 198, 218, 0.3);
-            margin-bottom: -40px;
             position: relative;
+            z-index: 100;
         }
 
         .lang-switcher {
             position: absolute;
             top: 15px;
-            right: 20px;
+            right: 15px;
             display: flex;
-            gap: 10px;
+            gap: 8px;
             background: rgba(255,255,255,0.2);
-            padding: 5px 10px;
-            border-radius: 20px;
+            padding: 4px 8px;
+            border-radius: 15px;
         }
 
         .lang-btn {
-            font-size: 1.2rem;
+            font-size: 1rem;
             cursor: pointer;
             filter: grayscale(0.8);
             transition: 0.3s;
-            line-height: 1;
         }
-        .lang-btn.active { filter: grayscale(0); transform: scale(1.2); }
+        .lang-btn.active { filter: grayscale(0); transform: scale(1.1); }
 
-        h1 { margin: 0; font-size: 1.8rem; font-weight: 600; }
-        .subtitle { font-size: 0.9rem; opacity: 0.9; margin-top: 5px; }
+        .bt-header-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+            background: rgba(0,0,0,0.05);
+            padding: 10px 20px;
+            margin-left: 20px;
+            margin-right: 20px;
+            border-radius: 15px;
+            font-size: 0.9rem;
+        }
 
+        .bt-dot {
+            width: 10px;
+            height: 10px;
+            background: var(--danger);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--danger);
+        }
+        .bt-dot.connected {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .device-info-compact { text-align: left; }
+        .device-name-header { font-weight: bold; }
+        .device-mac-header { font-size: 0.75rem; opacity: 0.8; }
+
+        /* Tabs */
+        .nav-tabs {
+            width: 100%;
+            display: flex;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-top: 10px;
+            justify-content: space-around;
+        }
+
+        .tab-link {
+            padding: 15px 20px;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-sub);
+            border-bottom: 3px solid transparent;
+            transition: 0.3s;
+            flex: 1;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        .tab-link.active {
+            color: var(--primary-dark);
+            border-bottom-color: var(--primary-dark);
+        }
+
+        /* Content */
         .container { 
-            width: 90%;
+            width: 95%;
             max-width: 500px;
-            z-index: 10;
+            padding-top: 20px;
+            flex: 1;
         }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
         .card { 
             background: var(--card-bg);
             border-radius: 20px;
-            padding: 25px;
+            padding: 20px;
             margin-bottom: 20px;
             box-shadow: var(--shadow);
-            transition: transform 0.2s;
         }
 
-        .status-card {
-            border-left: 8px solid var(--danger);
-            display: flex;
-            align-items: center;
-            gap: 20px;
+        /* Remote Control D-Pad */
+        .control-grid {
+            display: grid;
+            grid-template-areas: 
+                ". up ."
+                "left stop right"
+                ". down .";
+            gap: 15px;
+            justify-content: center;
+            align-content: center;
+            margin: 20px auto;
+            width: 260px;
+            height: 260px;
         }
-        .status-card.connected { border-left-color: var(--success); }
 
-        .status-icon {
-            font-size: 2.5rem;
-            width: 60px;
-            height: 60px;
+        .ctrl-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            border: none;
+            background: #f0f4f8;
+            color: var(--text-main);
+            font-size: 1.5rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #f0f4f8;
-            border-radius: 15px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            transition: 0.2s;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .status-info { flex: 1; }
-        .status-label { font-size: 0.8rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: 1px; }
-        .status-value { font-size: 1.2rem; font-weight: bold; margin-top: 2px; }
-        .client-info { font-size: 0.85rem; color: var(--text-sub); margin-top: 5px; }
-
-        .grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
+        .ctrl-btn:active { transform: scale(0.9); background: #e2e8f0; }
+        .ctrl-btn.up { grid-area: up; }
+        .ctrl-btn.down { grid-area: down; }
+        .ctrl-btn.left { grid-area: left; }
+        .ctrl-btn.right { grid-area: right; }
+        .ctrl-btn.stop { 
+            grid-area: stop; 
+            background: var(--danger); 
+            color: white; 
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 1.1rem;
         }
+        .ctrl-btn.stop:active { background: #d32f2f; }
 
+        /* Admin Buttons */
+        .admin-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
         .action-card {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
             padding: 20px;
             cursor: pointer;
             border: none;
             background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
             width: 100%;
-            text-decoration: none;
-            color: inherit;
-            font-family: inherit;
+            text-align: left;
+            gap: 15px;
         }
-        .action-card:hover { transform: translateY(-5px); }
-        .action-card:active { transform: scale(0.95); }
+        .action-icon { font-size: 1.5rem; width: 40px; }
+        .action-label { font-weight: 600; flex: 1; }
 
-        .action-icon { font-size: 2rem; margin-bottom: 10px; }
-        .action-label { font-weight: 600; font-size: 0.95rem; }
-
-        /* Floating Refresh Control */
+        /* Refresh Control */
         .refresh-control {
             position: fixed;
             bottom: 20px;
             right: 20px;
             background: var(--card-bg);
-            padding: 10px 15px;
+            padding: 8px 12px;
             border-radius: 50px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-size: 0.85rem;
+            gap: 8px;
+            font-size: 0.8rem;
             z-index: 100;
-            border: 1px solid #eee;
         }
 
-        select {
-            border: none;
-            background: #f0f2f5;
-            padding: 5px 10px;
-            border-radius: 10px;
-            font-weight: bold;
-            color: var(--primary-dark);
-            cursor: pointer;
-            outline: none;
-        }
+        select { border: none; background: #f0f2f5; padding: 4px 8px; border-radius: 10px; font-weight: bold; outline: none; }
 
-        @media (max-width: 400px) {
-            .grid { grid-template-columns: 1fr; }
-        }
+        .placeholder-text { text-align: center; color: var(--text-sub); padding: 40px 0; }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="lang-switcher">
-            <span class="lang-btn" id="lang-ru" onclick="changeLang('ru')" title="Русский">🇷🇺</span>
-            <span class="lang-btn" id="lang-en" onclick="changeLang('en')" title="English">🇺🇸</span>
-            <span class="lang-btn" id="lang-es" onclick="changeLang('es')" title="Español">🇪🇸</span>
+            <span class="lang-btn" id="lang-ru" onclick="changeLang('ru')">🇷🇺</span>
+            <span class="lang-btn" id="lang-en" onclick="changeLang('en')">🇺🇸</span>
+            <span class="lang-btn" id="lang-es" onclick="changeLang('es')">🇪🇸</span>
         </div>
         <h1 data-t="app_name">Control Cortase</h1>
-        <div class="subtitle" data-t="dashboard_subtitle">Motor Server Dashboard</div>
+        
+        <div class="bt-header-status">
+            <div class="bt-dot {{ 'connected' if connected else '' }}"></div>
+            <div class="device-info-compact">
+                <div class="device-name-header">
+                    {% if connected %}
+                        {{ device_name if device_name else 'MiotLinkAp_DAFA' }}
+                    {% else %}
+                        <span data-t="bt_disconnected">Disconnected</span>
+                    {% endif %}
+                </div>
+                {% if connected and client %}
+                <div class="device-mac-header">{{ client }}</div>
+                {% endif %}
+            </div>
+            <div style="flex: 1; text-align: right; opacity: 0.7;">
+                {{ '📱' if connected else '💤' }}
+            </div>
+        </div>
+    </div>
+
+    <div class="nav-tabs">
+        <div class="tab-link active" onclick="showTab('control')" data-t="tab_control">Управление</div>
+        <div class="tab-link" onclick="showTab('admin')" data-t="tab_admin">Админ</div>
+        <div class="tab-link" onclick="showTab('maps')" data-t="tab_maps">Карты</div>
     </div>
 
     <div class="container">
-        <!-- Status Card -->
-        <div class="card status-card {{ 'connected' if connected else '' }}">
-            <div class="status-icon">
-                {{ '📱' if connected else '💤' }}
-            </div>
-            <div class="status-info">
-                <div class="status-label" data-t="bt_status_label">Bluetooth Status</div>
-                <div class="status-value" data-t-status="{{ 'connected' if connected else 'disconnected' }}">{{ 'Connected' if connected else 'Disconnected' }}</div>
-                {% if client %}
-                <div class="client-info">{{ client }}</div>
-                {% endif %}
+        <!-- Control Tab -->
+        <div id="control" class="tab-content active">
+            <div class="card">
+                <div class="control-grid">
+                    <button class="ctrl-btn up" onclick="sendCommand('forward')">▲</button>
+                    <button class="ctrl-btn left" onclick="sendCommand('left')">◀</button>
+                    <button class="ctrl-btn stop" onclick="sendCommand('stop')">STOP</button>
+                    <button class="ctrl-btn right" onclick="sendCommand('right')">▶</button>
+                    <button class="ctrl-btn down" onclick="sendCommand('backward')">▼</button>
+                </div>
             </div>
         </div>
 
-        <!-- Action Grid -->
-        <div class="grid">
-            <form action="/update" method="post">
-                <button type="submit" class="card action-card">
-                    <div class="action-icon">🔄</div>
-                    <div class="action-label" data-t="btn_update">Update (Deploy)</div>
-                </button>
-            </form>
+        <!-- Admin Tab -->
+        <div id="admin" class="tab-content">
+            <div class="admin-grid">
+                <form action="/update" method="post">
+                    <button type="submit" class="action-card">
+                        <div class="action-icon">🔄</div>
+                        <div class="action-label" data-t="btn_update">Update (Deploy)</div>
+                    </button>
+                </form>
 
-            <form action="/restart" id="restartForm" method="post">
-                <button type="button" class="card action-card" onclick="confirmRestart()">
-                    <div class="action-icon">⚠️</div>
-                    <div class="action-label" data-t="btn_restart">Restart Pi</div>
-                </button>
-            </form>
+                <form action="/restart" id="restartForm" method="post">
+                    <button type="button" class="action-card" onclick="confirmRestart()">
+                        <div class="action-icon">⚠️</div>
+                        <div class="action-label" data-t="btn_restart">Restart Pi</div>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Maps Tab -->
+        <div id="maps" class="tab-content">
+            <div class="card">
+                <div class="placeholder-text">
+                    <div style="font-size: 3rem; margin-bottom: 10px;">🗺️</div>
+                    <div data-t="maps_placeholder">Карты в разработке...</div>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Floating Auto-Refresh -->
     <div class="refresh-control">
-        <span data-t="auto_refresh">⏱️ Автообновление:</span>
         <select id="refreshSelect" onchange="updateRefresh()">
-            <option value="0" data-t="off">Выкл</option>
-            <option value="5" data-t-suffix="s">5с</option>
-            <option value="10" data-t-suffix="s">10с</option>
-            <option value="15" data-t-suffix="s">15с</option>
-            <option value="30" data-t-suffix="s">30с</option>
-            <option value="60" data-t-suffix="m">1м</option>
-            <option value="300" data-t-suffix="m">5м</option>
+            <option value="0" data-t="off">Off</option>
+            <option value="5" data-t-suffix="s">5s</option>
+            <option value="10" data-t-suffix="s">10s</option>
+            <option value="15" data-t-suffix="s">15s</option>
+            <option value="30" data-t-suffix="s">30s</option>
+            <option value="60" data-t-suffix="m">1m</option>
+            <option value="300" data-t-suffix="m">5m</option>
         </select>
     </div>
 
@@ -268,45 +380,48 @@ HTML_TEMPLATE = """
         const translations = {
             ru: {
                 app_name: "Control Cortase",
-                dashboard_subtitle: "Панель управления сервером",
-                bt_status_label: "Статус Bluetooth",
-                bt_connected: "Подключено",
+                tab_control: "Управление",
+                tab_admin: "Администрирование",
+                tab_maps: "Карты",
                 bt_disconnected: "Отключено",
                 btn_update: "Обновить (Deploy)",
                 btn_restart: "Перезагрузить Pi",
-                auto_refresh: "⏱️ Автообновление:",
+                auto_refresh: "⏱️:",
                 off: "Выкл",
                 s: "с",
                 m: "м",
-                confirm_restart: "Вы уверены, что хотите перезагрузить устройство?"
+                confirm_restart: "Вы уверены, что хотите перезагрузить устройство?",
+                maps_placeholder: "Карты в разработке..."
             },
             en: {
                 app_name: "Control Cortase",
-                dashboard_subtitle: "Motor Server Dashboard",
-                bt_status_label: "Bluetooth Status",
-                bt_connected: "Connected",
+                tab_control: "Control",
+                tab_admin: "Admin",
+                tab_maps: "Maps",
                 bt_disconnected: "Disconnected",
                 btn_update: "Update (Deploy)",
                 btn_restart: "Restart Pi",
-                auto_refresh: "⏱️ Auto-refresh:",
+                auto_refresh: "⏱️:",
                 off: "Off",
                 s: "s",
                 m: "m",
-                confirm_restart: "Are you sure you want to restart the device?"
+                confirm_restart: "Are you sure you want to restart the device?",
+                maps_placeholder: "Maps under development..."
             },
             es: {
                 app_name: "Control Cortase",
-                dashboard_subtitle: "Panel de control del motor",
-                bt_status_label: "Estado de Bluetooth",
-                bt_connected: "Conectado",
+                tab_control: "Control",
+                tab_admin: "Admin",
+                tab_maps: "Mapas",
                 bt_disconnected: "Desconectado",
                 btn_update: "Actualizar (Deploy)",
                 btn_restart: "Reiniciar Pi",
-                auto_refresh: "⏱️ Auto-refresco:",
+                auto_refresh: "⏱️:",
                 off: "Apagado",
                 s: "s",
                 m: "m",
-                confirm_restart: "¿Está seguro de que desea reiniciar el dispositivo?"
+                confirm_restart: "¿Está seguro de что desea reiniciar el dispositivo?",
+                maps_placeholder: "Mapas en desarrollo..."
             }
         };
 
@@ -314,34 +429,40 @@ HTML_TEMPLATE = """
             const lang = localStorage.getItem('appLang') || 'ru';
             const t = translations[lang];
 
-            // Set active flag
             document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`lang-${lang}`).classList.add('active');
 
-            // Translate static elements
             document.querySelectorAll('[data-t]').forEach(el => {
                 const key = el.getAttribute('data-t');
                 if (t[key]) el.textContent = t[key];
             });
 
-            // Translate options with suffixes
             document.querySelectorAll('[data-t-suffix]').forEach(el => {
                 const suffix = el.getAttribute('data-t-suffix');
                 const val = el.value === "60" ? "1" : (el.value === "300" ? "5" : el.value);
                 el.textContent = `${val}${t[suffix]}`;
             });
-
-            // Status value
-            const statusEl = document.querySelector('[data-t-status]');
-            if (statusEl) {
-                const key = statusEl.getAttribute('data-t-status') === 'connected' ? 'bt_connected' : 'bt_disconnected';
-                statusEl.textContent = t[key];
-            }
         }
 
         function changeLang(lang) {
             localStorage.setItem('appLang', lang);
             applyTranslations();
+        }
+
+        function showTab(id) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-link').forEach(l => l.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if (event) {
+                event.target.classList.add('active');
+            }
+            localStorage.setItem('activeTab', id);
+        }
+
+        function sendCommand(dir) {
+            fetch(`/move/${dir}`, { method: 'POST' })
+                .then(r => console.log('Action:', dir))
+                .catch(e => console.error('Error:', e));
         }
 
         function confirmRestart() {
@@ -355,9 +476,7 @@ HTML_TEMPLATE = """
         function startRefresh(seconds) {
             if (refreshTimer) clearInterval(refreshTimer);
             if (seconds > 0) {
-                refreshTimer = setInterval(() => {
-                    location.reload();
-                }, seconds * 1000);
+                refreshTimer = setInterval(() => location.reload(), seconds * 1000);
             }
         }
 
@@ -368,12 +487,15 @@ HTML_TEMPLATE = """
         }
 
         window.onload = () => {
-            // Lang
             applyTranslations();
-            // Refresh
-            const saved = localStorage.getItem('refreshInterval') || "0";
-            document.getElementById('refreshSelect').value = saved;
-            startRefresh(parseInt(saved));
+            const savedRefresh = localStorage.getItem('refreshInterval') || "0";
+            document.getElementById('refreshSelect').value = savedRefresh;
+            startRefresh(parseInt(savedRefresh));
+            
+            const savedTab = localStorage.getItem('activeTab') || 'control';
+            showTab(savedTab);
+            const activeLink = document.querySelector(`.tab-link[onclick*="${savedTab}"]`);
+            if (activeLink) activeLink.classList.add('active');
         };
     </script>
 </body>
@@ -381,11 +503,29 @@ HTML_TEMPLATE = """
 """
 
 
-
 @app.route('/')
 def index():
     is_connected = BT_STATUS == "Connected"
-    return render_template_string(HTML_TEMPLATE, status=BT_STATUS, client=BT_CLIENT_INFO, connected=is_connected)
+    return render_template_string(HTML_TEMPLATE, status=BT_STATUS, client=BT_CLIENT_INFO, device_name=BT_DEVICE_NAME, connected=is_connected)
+
+@app.route('/move/<direction>', methods=['POST'])
+def move(direction):
+    if direction == "forward":
+        set_motor(1, "FORWARD")
+        set_motor(2, "FORWARD")
+    elif direction == "backward":
+        set_motor(1, "BACKWARD")
+        set_motor(2, "BACKWARD")
+    elif direction == "left":
+        set_motor(1, "BACKWARD")
+        set_motor(2, "FORWARD")
+    elif direction == "right":
+        set_motor(1, "FORWARD")
+        set_motor(2, "BACKWARD")
+    elif direction == "stop":
+        set_motor(1, "STOP")
+        set_motor(2, "STOP")
+    return "OK", 200
 
 @app.route('/update', methods=['POST'])
 def update():
@@ -440,7 +580,7 @@ def set_motor(motor, state):
             GPIO.output(IN4, GPIO.LOW)
 
 def server_loop():
-    global BT_STATUS, BT_CLIENT_INFO
+    global BT_STATUS, BT_CLIENT_INFO, BT_DEVICE_NAME
 
     # Use standard socket instead of PyBluez
     server_sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
@@ -472,7 +612,9 @@ def server_loop():
             client_sock, client_info = server_sock.accept()
             print("Accepted connection from", client_info)
             BT_STATUS = "Connected"
-            BT_CLIENT_INFO = str(client_info)
+            mac = client_info[0]
+            BT_CLIENT_INFO = mac
+            BT_DEVICE_NAME = get_bt_device_name(mac)
             
             try:
                 while True:
@@ -515,6 +657,7 @@ def server_loop():
                 print("Connection disconnected")
                 BT_STATUS = "Disconnected"
                 BT_CLIENT_INFO = None
+                BT_DEVICE_NAME = None
             
             client_sock.close()
             print("Client closed. Waiting for new connection...")
