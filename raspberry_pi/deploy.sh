@@ -36,7 +36,9 @@ if [ -f "$APP_DIR/requirements.txt" ]; then
   sudo pip3 install -r "$APP_DIR/requirements.txt" --break-system-packages
 else
   echo "Warning: requirements.txt not found. Installing defaults..."
-  sudo pip3 install flask RPi.GPIO --break-system-packages
+  # Install via apt for system stability and pip for the app
+  sudo apt-get install -y python3-gpiozero
+  sudo pip3 install flask gpiozero --break-system-packages
 fi
 
 echo "Fix permissions..."

@@ -1,40 +1,18 @@
 import socket
-import RPi.GPIO as GPIO
-import time
 import threading
 import subprocess
 import os
 from flask import Flask, render_template_string, request, redirect, url_for
+from gpiozero import Motor
 
-# --- GPIO Configuration (L298N) ---
-# Adjust these pins according to your wiring
-ENA = 23  # PWM Speed Left Motor (M1)
-IN1 = 17  # Left Motor Forward
-IN2 = 18  # Left Motor Backward
+# --- Motor Configuration (L298N + gpiozero) ---
+# Left Motor (M1): Forward=17, Backward=18, Speed Control (Enable)=23
+left_motor = Motor(forward=17, backward=18, enable=23)
 
-ENB = 24  # PWM Speed Right Motor (M2)
-IN3 = 27  # Right Motor Forward
-IN4 = 22  # Right Motor Backward
+# Right Motor (M2): Forward=27, Backward=22, Speed Control (Enable)=24
+right_motor = Motor(forward=27, backward=22, enable=24)
 
-# Setup GPIO
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-
-GPIO.setup(ENA, GPIO.OUT)
-GPIO.setup(IN1, GPIO.OUT)
-GPIO.setup(IN2, GPIO.OUT)
-
-GPIO.setup(ENB, GPIO.OUT)
-GPIO.setup(IN3, GPIO.OUT)
-GPIO.setup(IN4, GPIO.OUT)
-
-# Setup PWM
-pwm_m1 = GPIO.PWM(ENA, 1000) # 1kHz
-pwm_m2 = GPIO.PWM(ENB, 1000)
-pwm_m1.start(0)
-pwm_m2.start(0)
-
-current_speed = 50 # Default 0-100 duty cycle (will map from 0-255 input)
+current_speed = 0.5 # Default 0.0-1.0
 
 # --- Global State for Web Interface ---
 BT_STATUS = "Disconnected"
@@ -591,32 +569,19 @@ def run_flask():
     # Run on all interfaces, port 5000
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
-def map_speed(val):
-    # App sends 0-255, RPi.GPIO PWM expects 0-100
-    duty = (val / 255.0) * 100
-    return max(0, min(100, duty))
+def map_speed(val255):
+    # Map 0-255 value to 0.0-1.0 for gpiozero
+    return max(0.0, min(1.0, val255 / 255.0))
 
-def set_motor(motor, state):
-    if motor == 1:
-        if state == "FORWARD":
-            GPIO.output(IN1, GPIO.HIGH)
-            GPIO.output(IN2, GPIO.LOW)
-        elif state == "BACKWARD":
-            GPIO.output(IN1, GPIO.LOW)
-            GPIO.output(IN2, GPIO.HIGH)
-        elif state == "STOP":
-            GPIO.output(IN1, GPIO.LOW)
-            GPIO.output(IN2, GPIO.LOW)
-    elif motor == 2:
-        if state == "FORWARD":
-            GPIO.output(IN3, GPIO.HIGH)
-            GPIO.output(IN4, GPIO.LOW)
-        elif state == "BACKWARD":
-            GPIO.output(IN3, GPIO.LOW)
-            GPIO.output(IN4, GPIO.HIGH)
-        elif state == "STOP":
-            GPIO.output(IN3, GPIO.LOW)
-            GPIO.output(IN4, GPIO.LOW)
+def set_motor(motor_id, direction):
+    motor = left_motor if motor_id == 1 else right_motor
+    
+    if direction == "FORWARD":
+        motor.forward(current_speed)
+    elif direction == "BACKWARD":
+        motor.backward(current_speed)
+    elif direction == "STOP":
+        motor.stop()
 
 def server_loop():
     global BT_STATUS, BT_CLIENT_INFO, BT_DEVICE_NAME
@@ -673,10 +638,13 @@ def server_loop():
                     if cmd_str.startswith("SPEED:"):
                         try:
                             val = int(cmd_str.split(":")[1])
-                            duty = map_speed(val)
-                            pwm_m1.ChangeDutyCycle(duty)
-                            pwm_m2.ChangeDutyCycle(duty)
-                            print(f"Speed set to {duty}%")
+                            current_speed = map_speed(val)
+                            # Re-apply current speed to motors if they are moving
+                            if left_motor.is_active:
+                                left_motor.value = (left_motor.value / abs(left_motor.value)) * current_speed if left_motor.value != 0 else 0
+                            if right_motor.is_active:
+                                right_motor.value = (right_motor.value / abs(right_motor.value)) * current_speed if right_motor.value != 0 else 0
+                            print(f"Speed set to {current_speed*100}%")
                         except ValueError:
                             print("Invalid Speed Value")
                     else:
@@ -701,7 +669,6 @@ def server_loop():
              print(f"Error accepting connection: {e}")
 
     server_sock.close()
-    GPIO.cleanup()
 
 if __name__ == "__main__":
     # Start Web Server in a background thread
