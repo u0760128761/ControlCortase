@@ -2,7 +2,8 @@ import socket
 import threading
 import subprocess
 import os
-from flask import Flask, render_template_string, request, redirect, url_for
+import queue
+from flask import Flask, render_template_string, request, redirect, url_for, Response
 from gpiozero import Motor
 
 # --- Motor Configuration (L298N + gpiozero) ---
@@ -18,6 +19,10 @@ current_speed = 0.5 # Default 0.0-1.0
 BT_STATUS = "Disconnected"
 BT_CLIENT_INFO = None
 BT_DEVICE_NAME = None
+
+# --- Maintenance State ---
+log_queue = queue.Queue(maxsize=100)
+is_updating = False
 
 def get_bt_device_name(mac):
     try:
@@ -273,9 +278,89 @@ HTML_TEMPLATE = """
         select { border: none; background: #f0f2f5; padding: 4px 8px; border-radius: 10px; font-weight: bold; outline: none; }
 
         .placeholder-text { text-align: center; color: var(--text-sub); padding: 40px 0; }
+        /* Terminal Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #1e1e1e;
+            width: 90%;
+            max-width: 600px;
+            height: 70vh;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .modal-header {
+            padding: 15px 20px;
+            background: #333;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .terminal-body {
+            flex: 1;
+            padding: 15px;
+            color: #00ff00;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            background: #000;
+        }
+        .close-btn { cursor: pointer; font-size: 1.5rem; }
+
+        /* Reboot Overlay */
+        .reboot-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--primary);
+            z-index: 3000;
+            color: white;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255,255,255,0.3);
+            border-top: 5px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+    <div id="terminalModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span data-t="modal_update_title">System Update</span>
+                <span class="close-btn" onclick="closeTerminal()">&times;</span>
+            </div>
+            <div id="terminalBody" class="terminal-body"></div>
+        </div>
+    </div>
+
+    <div id="rebootOverlay" class="reboot-overlay">
+        <div class="spinner"></div>
+        <h2 data-t="rebooting_title">System Rebooting...</h2>
+        <p data-t="rebooting_msg">Please wait while the system starts up. Page will reload automatically.</p>
+    </div>
+
     <div class="header">
         <div class="lang-switcher">
             <span class="lang-btn" id="lang-ru" onclick="changeLang('ru')">🇷🇺</span>
@@ -337,19 +422,17 @@ HTML_TEMPLATE = """
         <!-- Admin Tab -->
         <div id="admin" class="tab-content">
             <div class="admin-grid">
-                <form action="/update" method="post">
+                <form onsubmit="event.preventDefault(); startUpdate();">
                     <button type="submit" class="action-card">
                         <div class="action-icon">🔄</div>
                         <div class="action-label" data-t="btn_update">Update (Deploy)</div>
                     </button>
                 </form>
 
-                <form action="/restart" id="restartForm" method="post">
-                    <button type="button" class="action-card" onclick="confirmRestart()">
-                        <div class="action-icon">⚠️</div>
-                        <div class="action-label" data-t="btn_restart">Restart Pi</div>
-                    </button>
-                </form>
+                <div class="action-card" onclick="confirmRestart()">
+                    <div class="action-icon">⚠️</div>
+                    <div class="action-label" data-t="btn_restart">Restart Pi</div>
+                </div>
             </div>
         </div>
 
@@ -394,7 +477,11 @@ HTML_TEMPLATE = """
                 confirm_restart: "Вы уверены, что хотите перезагрузить устройство?",
                 maps_placeholder: "Карты в разработке...",
                 m_left: "Левый мотор",
-                m_right: "Правый мотор"
+                m_right: "Правый мотор",
+                modal_update_title: "Обновление системы",
+                rebooting_title: "Система перезагружается...",
+                rebooting_msg: "Пожалуйста, подождите. Страница обновится автоматически.",
+                error_update: "Ошибка при запуске обновления"
             },
             en: {
                 app_name: "Control Cortase",
@@ -411,7 +498,11 @@ HTML_TEMPLATE = """
                 confirm_restart: "Are you sure you want to restart the device?",
                 maps_placeholder: "Maps under development...",
                 m_left: "Left Motor",
-                m_right: "Right Motor"
+                m_right: "Right Motor",
+                modal_update_title: "System Update",
+                rebooting_title: "System Rebooting...",
+                rebooting_msg: "Please wait. Page will reload automatically.",
+                error_update: "Error starting update"
             },
             es: {
                 app_name: "Control Cortase",
@@ -428,7 +519,11 @@ HTML_TEMPLATE = """
                 confirm_restart: "¿Está seguro de что desea reiniciar el dispositivo?",
                 maps_placeholder: "Mapas en desarrollo...",
                 m_left: "Motor Izquierdo",
-                m_right: "Motor Derecho"
+                m_right: "Motor Derecho",
+                modal_update_title: "Actualización del Sistema",
+                rebooting_title: "Sistema Reiniciando...",
+                rebooting_msg: "Por favor, espere. La página se recargará automáticamente.",
+                error_update: "Error al iniciar la actualización"
             }
         };
 
@@ -472,11 +567,55 @@ HTML_TEMPLATE = """
                 .catch(e => console.error('Error:', e));
         }
 
+        let eventSource = null;
+        function startUpdate() {
+            const terminal = document.getElementById('terminalBody');
+            terminal.innerHTML = "";
+            document.getElementById('terminalModal').style.display = 'flex';
+            
+            fetch('/update', { method: 'POST' })
+                .then(r => {
+                    if (r.ok) {
+                        if (eventSource) eventSource.close();
+                        eventSource = new EventSource('/stream_logs');
+                        eventSource.onmessage = (e) => {
+                            terminal.innerText += e.data;
+                            terminal.scrollTop = terminal.scrollHeight;
+                            if (e.data.includes("DONE")) {
+                                eventSource.close();
+                            }
+                        };
+                    } else {
+                        const lang = localStorage.getItem('appLang') || 'ru';
+                        alert(translations[lang].error_update);
+                    }
+                });
+        }
+
+        function closeTerminal() {
+            document.getElementById('terminalModal').style.display = 'none';
+            if (eventSource) eventSource.close();
+        }
+
         function confirmRestart() {
             const lang = localStorage.getItem('appLang') || 'ru';
             if (confirm(translations[lang].confirm_restart)) {
-                document.getElementById('restartForm').submit();
+                document.getElementById('rebootOverlay').style.display = 'flex';
+                fetch('/restart', { method: 'POST' })
+                    .then(() => {
+                        // Wait for reboot
+                        setTimeout(checkServer, 10000);
+                    });
             }
+        }
+
+        function checkServer() {
+            fetch('/')
+                .then(r => {
+                    if (r.ok) location.reload();
+                    else setTimeout(checkServer, 2000);
+                })
+                .catch(() => setTimeout(checkServer, 2000));
         }
 
         let refreshTimer = null;
@@ -546,24 +685,53 @@ def process_movement_cmd(cmd):
 
 @app.route('/update', methods=['POST'])
 def update():
-    try:
-        # Run deploy.sh from the current directory
-        # Assuming deploy.sh is in the same folder as this script, or one level up?
-        # Based on file structure, it seems to be in the same folder as motor_server.py is in raspberry_pi/
-        # Wait, the user said "deploy.sh" is available. Let's assume relative path "./deploy.sh" in CWD.
-        subprocess.Popen(["./deploy.sh"], shell=True)
-        return redirect(url_for('index'))
-    except Exception as e:
-        return f"Error starting update: {e}", 500
+    global is_updating
+    if is_updating:
+        return "Update already in progress", 400
+    
+    def run_update():
+        global is_updating
+        is_updating = True
+        try:
+            # Clear old logs
+            while not log_queue.empty(): log_queue.get()
+            
+            process = subprocess.Popen(["./deploy.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=False)
+            for line in process.stdout:
+                log_queue.put(line)
+            process.wait()
+            log_queue.put("DONE\n")
+        except Exception as e:
+            log_queue.put(f"ERROR: {e}\n")
+            log_queue.put("DONE\n")
+        finally:
+            is_updating = False
+
+    threading.Thread(target=run_update).start()
+    return "OK", 200
+
+@app.route('/stream_logs')
+def stream_logs():
+    def generate():
+        while True:
+            line = log_queue.get()
+            yield f"data: {line}\n\n"
+            if line == "DONE\n":
+                break
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/restart', methods=['POST'])
 def restart():
     try:
-        # Restart the Raspberry Pi
-        subprocess.Popen(["sudo", "reboot"])
-        return redirect(url_for('index'))
+        def do_reboot():
+            import time
+            time.sleep(1) # Delay to allow Flask to return response
+            subprocess.run(["sudo", "reboot"])
+            
+        threading.Thread(target=do_reboot).start()
+        return "OK", 200
     except Exception as e:
-        return f"Error restarting: {e}", 500
+        return f"Error: {e}", 500
 
 def run_flask():
     # Run on all interfaces, port 5000
@@ -582,6 +750,35 @@ def set_motor(motor_id, direction):
         motor.backward(current_speed)
     elif direction == "STOP":
         motor.stop()
+
+def process_update_bt(sock):
+    global is_updating
+    is_updating = True
+    try:
+        # Clear old logs
+        while not log_queue.empty(): log_queue.get()
+        
+        process = subprocess.Popen(["./deploy.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=False)
+        for line in process.stdout:
+            log_queue.put(line)
+            try:
+                sock.send(line.encode())
+            except:
+                pass # Client might have closed
+        process.wait()
+        log_queue.put("DONE\n")
+        try: sock.send("DONE\n".encode())
+        except: pass
+    except Exception as e:
+        err = f"ERROR: {e}\n"
+        log_queue.put(err)
+        try: sock.send(err.encode())
+        except: pass
+        log_queue.put("DONE\n")
+        try: sock.send("DONE\n".encode())
+        except: pass
+    finally:
+        is_updating = False
 
 def server_loop():
     global BT_STATUS, BT_CLIENT_INFO, BT_DEVICE_NAME
@@ -647,6 +844,20 @@ def server_loop():
                             print(f"Speed set to {current_speed*100}%")
                         except ValueError:
                             print("Invalid Speed Value")
+                    elif cmd_str == "UPDATE":
+                        print("Update requested via BT")
+                        if not is_updating:
+                            threading.Thread(target=process_update_bt, args=(client_sock,), daemon=True).start()
+                        else:
+                            client_sock.send("Update already in progress\n".encode())
+                    elif cmd_str == "RESTART":
+                        print("Restart requested via BT")
+                        client_sock.send("RESTARTING\n".encode())
+                        def do_reboot_bt():
+                            import time
+                            time.sleep(2)
+                            subprocess.run(["sudo", "reboot"])
+                        threading.Thread(target=do_reboot_bt, daemon=True).start()
                     else:
                         process_movement_cmd(cmd_str)
                     

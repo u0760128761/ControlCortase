@@ -12,23 +12,25 @@ import java.io.OutputStream
 import java.util.UUID
 
 object BluetoothManager {
-    private val MY_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") // Standard SPP UUID
+    private val MY_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private var socket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
     private var inputStream: InputStream? = null
+    private var lastDevice: BluetoothDevice? = null
+    private var readThread: Thread? = null
     
-    // Callback for connection status
     var onConnectionFailed: (() -> Unit)? = null
+    var onDataReceived: ((String) -> Unit)? = null
 
-    // Connect to a device
-    // SuppressSuppressLint because permission checks should be done in Activity before calling this
     @SuppressLint("MissingPermission")
     fun connect(device: BluetoothDevice): Boolean {
+        lastDevice = device
         return try {
             socket = device.createRfcommSocketToServiceRecord(MY_UUID)
             socket?.connect()
             outputStream = socket?.outputStream
             inputStream = socket?.inputStream
+            startReading()
             true
         } catch (e: IOException) {
             e.printStackTrace()
@@ -37,7 +39,39 @@ object BluetoothManager {
         }
     }
 
-    // Send command
+    fun reconnect(callback: (Boolean) -> Unit) {
+        val device = lastDevice
+        if (device == null) {
+            callback(false)
+            return
+        }
+        Thread {
+            val success = connect(device)
+            callback(success)
+        }.start()
+    }
+
+    private fun startReading() {
+        readThread?.interrupt()
+        readThread = Thread {
+            val buffer = ByteArray(1024)
+            while (!Thread.currentThread().isInterrupted && socket?.isConnected == true) {
+                try {
+                    val bytes = inputStream?.read(buffer) ?: -1
+                    if (bytes > 0) {
+                        val message = String(buffer, 0, bytes)
+                        onDataReceived?.invoke(message)
+                    } else if (bytes == -1) {
+                        break
+                    }
+                } catch (e: IOException) {
+                    onConnectionFailed?.invoke()
+                    break
+                }
+            }
+        }.apply { start() }
+    }
+
     fun sendCommand(command: String) {
         try {
             outputStream?.write((command + "\n").toByteArray())
@@ -48,13 +82,10 @@ object BluetoothManager {
         }
     }
 
-    // Check if connected
-    fun isConnected(): Boolean {
-        return socket?.isConnected == true
-    }
+    fun isConnected(): Boolean = socket?.isConnected == true
 
-    // Close connection
     fun close() {
+        readThread?.interrupt()
         try {
             outputStream?.close()
             inputStream?.close()
@@ -65,5 +96,6 @@ object BluetoothManager {
         socket = null
         outputStream = null
         inputStream = null
+        readThread = null
     }
 }

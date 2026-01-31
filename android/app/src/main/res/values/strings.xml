@@ -12,6 +12,11 @@
     <string name="btn_backward">Backward</string>
     <string name="btn_stop">STOP</string>
     <string name="label_speed">Speed: 0%</string>
+    <string name="label_admin">ADMINISTRATION</string>
+    <string name="btn_update">Update (Deploy)</string>
+    <string name="btn_restart">Restart Pi</string>
+    <string name="msg_rebooting">System rebooting...\nAuto-reconnecting in 20s</string>
+    <string name="title_update_logs">Deployment Logs</string>
     <string name="hint_log">Log...</string>
     <string name="error_bluetooth_not_supported">Bluetooth not supported</string>
     <string name="error_connect_failed">Connection failed</string>
