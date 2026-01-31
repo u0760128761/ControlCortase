@@ -29,7 +29,11 @@ rsync -av --delete \
 
 if [ -f "$APP_DIR/requirements.txt" ]; then
   echo "Installing Python dependencies..."
-  pip3 install -r "$APP_DIR/requirements.txt"
+  # Force install with sudo to ensure they are available for the root service
+  sudo pip3 install -r "$APP_DIR/requirements.txt" --break-system-packages
+else
+  echo "Warning: requirements.txt not found. Installing defaults..."
+  sudo pip3 install flask RPi.GPIO --break-system-packages
 fi
 
 echo "Fix permissions..."

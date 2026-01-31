@@ -1,6 +1,10 @@
 import socket
 import RPi.GPIO as GPIO
 import time
+import threading
+import subprocess
+import os
+from flask import Flask, render_template_string, request, redirect, url_for
 
 # --- GPIO Configuration (L298N) ---
 # Adjust these pins according to your wiring
@@ -32,6 +36,85 @@ pwm_m2.start(0)
 
 current_speed = 50 # Default 0-100 duty cycle (will map from 0-255 input)
 
+# --- Global State for Web Interface ---
+BT_STATUS = "Disconnected"
+BT_CLIENT_INFO = None
+
+app = Flask(__name__)
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Motor Server Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background-color: #f4f4f4; }
+        .container { background-color: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .status { font-size: 1.2em; margin: 20px 0; padding: 10px; border-radius: 5px; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .btn { display: inline-block; padding: 15px 30px; margin: 10px; font-size: 1.2em; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; color: white; width: 80%; }
+        .btn-update { background-color: #007bff; }
+        .btn-update:hover { background-color: #0056b3; }
+        .btn-restart { background-color: #dc3545; }
+        .btn-restart:hover { background-color: #bd2130; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Motor Server Dashboard</h1>
+        
+        <div class="status {{ 'connected' if connected else 'disconnected' }}">
+            Status: <strong>{{ status }}</strong>
+            {% if client %}
+            <br><small>Client: {{ client }}</small>
+            {% endif %}
+        </div>
+
+        <form action="/update" method="post">
+            <button type="submit" class="btn btn-update">🔄 Update (Deploy)</button>
+        </form>
+        
+        <form action="/restart" method="post" onsubmit="return confirm('Are you sure you want to restart the Pi?');">
+            <button type="submit" class="btn btn-restart">⚠️ Restart Device</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+@app.route('/')
+def index():
+    is_connected = BT_STATUS == "Connected"
+    return render_template_string(HTML_TEMPLATE, status=BT_STATUS, client=BT_CLIENT_INFO, connected=is_connected)
+
+@app.route('/update', methods=['POST'])
+def update():
+    try:
+        # Run deploy.sh from the current directory
+        # Assuming deploy.sh is in the same folder as this script, or one level up?
+        # Based on file structure, it seems to be in the same folder as motor_server.py is in raspberry_pi/
+        # Wait, the user said "deploy.sh" is available. Let's assume relative path "./deploy.sh" in CWD.
+        subprocess.Popen(["./deploy.sh"], shell=True)
+        return "Update started. Check server logs.", 200
+    except Exception as e:
+        return f"Error starting update: {e}", 500
+
+@app.route('/restart', methods=['POST'])
+def restart():
+    try:
+        # Restart the Raspberry Pi
+        subprocess.Popen(["sudo", "reboot"])
+        return "Rebooting...", 200
+    except Exception as e:
+        return f"Error restarting: {e}", 500
+
+def run_flask():
+    # Run on all interfaces, port 5000
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
 def map_speed(val):
     # App sends 0-255, RPi.GPIO PWM expects 0-100
     duty = (val / 255.0) * 100
@@ -60,6 +143,8 @@ def set_motor(motor, state):
             GPIO.output(IN4, GPIO.LOW)
 
 def server_loop():
+    global BT_STATUS, BT_CLIENT_INFO
+
     # Use standard socket instead of PyBluez
     server_sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     
@@ -89,6 +174,8 @@ def server_loop():
         try:
             client_sock, client_info = server_sock.accept()
             print("Accepted connection from", client_info)
+            BT_STATUS = "Connected"
+            BT_CLIENT_INFO = str(client_info)
             
             try:
                 while True:
@@ -129,6 +216,8 @@ def server_loop():
                     
             except IOError:
                 print("Connection disconnected")
+                BT_STATUS = "Disconnected"
+                BT_CLIENT_INFO = None
             
             client_sock.close()
             print("Client closed. Waiting for new connection...")
@@ -146,4 +235,9 @@ def server_loop():
     GPIO.cleanup()
 
 if __name__ == "__main__":
+    # Start Web Server in a background thread
+    web_thread = threading.Thread(target=run_flask, daemon=True)
+    web_thread.start()
+    print("Web Interface started at http://<IP>:5000")
+
     server_loop()
