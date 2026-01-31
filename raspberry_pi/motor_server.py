@@ -44,46 +44,343 @@ app = Flask(__name__)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Motor Server Control</title>
+    <meta charset="UTF-8">
+    <title>Motor Server Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background-color: #f4f4f4; }
-        .container { background-color: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        h1 { color: #333; }
-        .status { font-size: 1.2em; margin: 20px 0; padding: 10px; border-radius: 5px; }
-        .connected { background-color: #d4edda; color: #155724; }
-        .disconnected { background-color: #f8d7da; color: #721c24; }
-        .btn { display: inline-block; padding: 15px 30px; margin: 10px; font-size: 1.2em; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; color: white; width: 80%; }
-        .btn-update { background-color: #007bff; }
-        .btn-update:hover { background-color: #0056b3; }
-        .btn-restart { background-color: #dc3545; }
-        .btn-restart:hover { background-color: #bd2130; }
+        :root {
+            --primary: #26c6da;
+            --primary-dark: #00acc1;
+            --bg: #f5f7fa;
+            --card-bg: #ffffff;
+            --text-main: #37474f;
+            --text-sub: #78909c;
+            --success: #66bb6a;
+            --danger: #ef5350;
+            --shadow: 0 10px 25px rgba(0,0,0,0.05);
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            background-color: var(--bg); 
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .header {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            padding: 40px 0 60px 0;
+            text-align: center;
+            border-radius: 0 0 30px 30px;
+            box-shadow: 0 4px 15px rgba(38, 198, 218, 0.3);
+            margin-bottom: -40px;
+            position: relative;
+        }
+
+        .lang-switcher {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 10px;
+            border-radius: 20px;
+        }
+
+        .lang-btn {
+            font-size: 1.2rem;
+            cursor: pointer;
+            filter: grayscale(0.8);
+            transition: 0.3s;
+            line-height: 1;
+        }
+        .lang-btn.active { filter: grayscale(0); transform: scale(1.2); }
+
+        h1 { margin: 0; font-size: 1.8rem; font-weight: 600; }
+        .subtitle { font-size: 0.9rem; opacity: 0.9; margin-top: 5px; }
+
+        .container { 
+            width: 90%;
+            max-width: 500px;
+            z-index: 10;
+        }
+
+        .card { 
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s;
+        }
+
+        .status-card {
+            border-left: 8px solid var(--danger);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .status-card.connected { border-left-color: var(--success); }
+
+        .status-icon {
+            font-size: 2.5rem;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f0f4f8;
+            border-radius: 15px;
+        }
+
+        .status-info { flex: 1; }
+        .status-label { font-size: 0.8rem; color: var(--text-sub); text-transform: uppercase; letter-spacing: 1px; }
+        .status-value { font-size: 1.2rem; font-weight: bold; margin-top: 2px; }
+        .client-info { font-size: 0.85rem; color: var(--text-sub); margin-top: 5px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .action-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            cursor: pointer;
+            border: none;
+            background: var(--card-bg);
+            width: 100%;
+            text-decoration: none;
+            color: inherit;
+            font-family: inherit;
+        }
+        .action-card:hover { transform: translateY(-5px); }
+        .action-card:active { transform: scale(0.95); }
+
+        .action-icon { font-size: 2rem; margin-bottom: 10px; }
+        .action-label { font-weight: 600; font-size: 0.95rem; }
+
+        /* Floating Refresh Control */
+        .refresh-control {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            padding: 10px 15px;
+            border-radius: 50px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            z-index: 100;
+            border: 1px solid #eee;
+        }
+
+        select {
+            border: none;
+            background: #f0f2f5;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-weight: bold;
+            color: var(--primary-dark);
+            cursor: pointer;
+            outline: none;
+        }
+
+        @media (max-width: 400px) {
+            .grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
+    <div class="header">
+        <div class="lang-switcher">
+            <span class="lang-btn" id="lang-ru" onclick="changeLang('ru')" title="Русский">🇷🇺</span>
+            <span class="lang-btn" id="lang-en" onclick="changeLang('en')" title="English">🇺🇸</span>
+            <span class="lang-btn" id="lang-es" onclick="changeLang('es')" title="Español">🇪🇸</span>
+        </div>
+        <h1 data-t="app_name">Control Cortase</h1>
+        <div class="subtitle" data-t="dashboard_subtitle">Motor Server Dashboard</div>
+    </div>
+
     <div class="container">
-        <h1>Motor Server Dashboard</h1>
-        
-        <div class="status {{ 'connected' if connected else 'disconnected' }}">
-            Status: <strong>{{ status }}</strong>
-            {% if client %}
-            <br><small>Client: {{ client }}</small>
-            {% endif %}
+        <!-- Status Card -->
+        <div class="card status-card {{ 'connected' if connected else '' }}">
+            <div class="status-icon">
+                {{ '📱' if connected else '💤' }}
+            </div>
+            <div class="status-info">
+                <div class="status-label" data-t="bt_status_label">Bluetooth Status</div>
+                <div class="status-value" data-t-status="{{ 'connected' if connected else 'disconnected' }}">{{ 'Connected' if connected else 'Disconnected' }}</div>
+                {% if client %}
+                <div class="client-info">{{ client }}</div>
+                {% endif %}
+            </div>
         </div>
 
-        <form action="/update" method="post">
-            <button type="submit" class="btn btn-update">🔄 Update (Deploy)</button>
-        </form>
-        
-        <form action="/restart" method="post" onsubmit="return confirm('Are you sure you want to restart the Pi?');">
-            <button type="submit" class="btn btn-restart">⚠️ Restart Device</button>
-        </form>
+        <!-- Action Grid -->
+        <div class="grid">
+            <form action="/update" method="post">
+                <button type="submit" class="card action-card">
+                    <div class="action-icon">🔄</div>
+                    <div class="action-label" data-t="btn_update">Update (Deploy)</div>
+                </button>
+            </form>
+
+            <form action="/restart" id="restartForm" method="post">
+                <button type="button" class="card action-card" onclick="confirmRestart()">
+                    <div class="action-icon">⚠️</div>
+                    <div class="action-label" data-t="btn_restart">Restart Pi</div>
+                </button>
+            </form>
+        </div>
     </div>
+
+    <!-- Floating Auto-Refresh -->
+    <div class="refresh-control">
+        <span data-t="auto_refresh">⏱️ Автообновление:</span>
+        <select id="refreshSelect" onchange="updateRefresh()">
+            <option value="0" data-t="off">Выкл</option>
+            <option value="5" data-t-suffix="s">5с</option>
+            <option value="10" data-t-suffix="s">10с</option>
+            <option value="15" data-t-suffix="s">15с</option>
+            <option value="30" data-t-suffix="s">30с</option>
+            <option value="60" data-t-suffix="m">1м</option>
+            <option value="300" data-t-suffix="m">5м</option>
+        </select>
+    </div>
+
+    <script>
+        const translations = {
+            ru: {
+                app_name: "Control Cortase",
+                dashboard_subtitle: "Панель управления сервером",
+                bt_status_label: "Статус Bluetooth",
+                bt_connected: "Подключено",
+                bt_disconnected: "Отключено",
+                btn_update: "Обновить (Deploy)",
+                btn_restart: "Перезагрузить Pi",
+                auto_refresh: "⏱️ Автообновление:",
+                off: "Выкл",
+                s: "с",
+                m: "м",
+                confirm_restart: "Вы уверены, что хотите перезагрузить устройство?"
+            },
+            en: {
+                app_name: "Control Cortase",
+                dashboard_subtitle: "Motor Server Dashboard",
+                bt_status_label: "Bluetooth Status",
+                bt_connected: "Connected",
+                bt_disconnected: "Disconnected",
+                btn_update: "Update (Deploy)",
+                btn_restart: "Restart Pi",
+                auto_refresh: "⏱️ Auto-refresh:",
+                off: "Off",
+                s: "s",
+                m: "m",
+                confirm_restart: "Are you sure you want to restart the device?"
+            },
+            es: {
+                app_name: "Control Cortase",
+                dashboard_subtitle: "Panel de control del motor",
+                bt_status_label: "Estado de Bluetooth",
+                bt_connected: "Conectado",
+                bt_disconnected: "Desconectado",
+                btn_update: "Actualizar (Deploy)",
+                btn_restart: "Reiniciar Pi",
+                auto_refresh: "⏱️ Auto-refresco:",
+                off: "Apagado",
+                s: "s",
+                m: "m",
+                confirm_restart: "¿Está seguro de que desea reiniciar el dispositivo?"
+            }
+        };
+
+        function applyTranslations() {
+            const lang = localStorage.getItem('appLang') || 'ru';
+            const t = translations[lang];
+
+            // Set active flag
+            document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`lang-${lang}`).classList.add('active');
+
+            // Translate static elements
+            document.querySelectorAll('[data-t]').forEach(el => {
+                const key = el.getAttribute('data-t');
+                if (t[key]) el.textContent = t[key];
+            });
+
+            // Translate options with suffixes
+            document.querySelectorAll('[data-t-suffix]').forEach(el => {
+                const suffix = el.getAttribute('data-t-suffix');
+                const val = el.value === "60" ? "1" : (el.value === "300" ? "5" : el.value);
+                el.textContent = `${val}${t[suffix]}`;
+            });
+
+            // Status value
+            const statusEl = document.querySelector('[data-t-status]');
+            if (statusEl) {
+                const key = statusEl.getAttribute('data-t-status') === 'connected' ? 'bt_connected' : 'bt_disconnected';
+                statusEl.textContent = t[key];
+            }
+        }
+
+        function changeLang(lang) {
+            localStorage.setItem('appLang', lang);
+            applyTranslations();
+        }
+
+        function confirmRestart() {
+            const lang = localStorage.getItem('appLang') || 'ru';
+            if (confirm(translations[lang].confirm_restart)) {
+                document.getElementById('restartForm').submit();
+            }
+        }
+
+        let refreshTimer = null;
+        function startRefresh(seconds) {
+            if (refreshTimer) clearInterval(refreshTimer);
+            if (seconds > 0) {
+                refreshTimer = setInterval(() => {
+                    location.reload();
+                }, seconds * 1000);
+            }
+        }
+
+        function updateRefresh() {
+            const val = document.getElementById('refreshSelect').value;
+            localStorage.setItem('refreshInterval', val);
+            startRefresh(parseInt(val));
+        }
+
+        window.onload = () => {
+            // Lang
+            applyTranslations();
+            // Refresh
+            const saved = localStorage.getItem('refreshInterval') || "0";
+            document.getElementById('refreshSelect').value = saved;
+            startRefresh(parseInt(saved));
+        };
+    </script>
 </body>
 </html>
 """
+
+
 
 @app.route('/')
 def index():
