@@ -8,13 +8,13 @@ from flask import Flask, render_template_string, request, redirect, url_for
 
 # --- GPIO Configuration (L298N) ---
 # Adjust these pins according to your wiring
-ENA = 25  # PWM Speed Motor 1
-IN1 = 23  # Motor 1 Direction A
-IN2 = 24  # Motor 1 Direction B
+ENA = 23  # PWM Speed Left Motor (M1)
+IN1 = 17  # Left Motor Forward
+IN2 = 18  # Left Motor Backward
 
-ENB = 18  # PWM Speed Motor 2
-IN3 = 17  # Motor 2 Direction A
-IN4 = 27  # Motor 2 Direction B
+ENB = 24  # PWM Speed Right Motor (M2)
+IN3 = 27  # Right Motor Forward
+IN4 = 22  # Right Motor Backward
 
 # Setup GPIO
 GPIO.setmode(GPIO.BCM)
@@ -245,6 +245,19 @@ HTML_TEMPLATE = """
         }
         .ctrl-btn.stop:active { background: #d32f2f; }
 
+        /* Motor Info Info */
+        .motor-info {
+            display: flex;
+            justify-content: space-around;
+            font-size: 0.75rem;
+            color: var(--text-sub);
+            padding-top: 15px;
+            border-top: 1px solid #f0f4f8;
+            margin-top: 5px;
+        }
+        .motor-side { text-align: center; }
+        .motor-pins { font-weight: bold; color: var(--primary-dark); }
+
         /* Admin Buttons */
         .admin-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
         .action-card {
@@ -330,6 +343,16 @@ HTML_TEMPLATE = """
                     <button class="ctrl-btn right" onclick="sendCommand('right')">▶</button>
                     <button class="ctrl-btn down" onclick="sendCommand('backward')">▼</button>
                 </div>
+                <div class="motor-info">
+                    <div class="motor-side">
+                        <div data-t="m_left">Левый мотор</div>
+                        <div class="motor-pins">GPIO 17, 18, 23</div>
+                    </div>
+                    <div class="motor-side">
+                        <div data-t="m_right">Правый мотор</div>
+                        <div class="motor-pins">GPIO 27, 22, 24</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -391,7 +414,9 @@ HTML_TEMPLATE = """
                 s: "с",
                 m: "м",
                 confirm_restart: "Вы уверены, что хотите перезагрузить устройство?",
-                maps_placeholder: "Карты в разработке..."
+                maps_placeholder: "Карты в разработке...",
+                m_left: "Левый мотор",
+                m_right: "Правый мотор"
             },
             en: {
                 app_name: "Control Cortase",
@@ -406,7 +431,9 @@ HTML_TEMPLATE = """
                 s: "s",
                 m: "m",
                 confirm_restart: "Are you sure you want to restart the device?",
-                maps_placeholder: "Maps under development..."
+                maps_placeholder: "Maps under development...",
+                m_left: "Left Motor",
+                m_right: "Right Motor"
             },
             es: {
                 app_name: "Control Cortase",
@@ -421,7 +448,9 @@ HTML_TEMPLATE = """
                 s: "s",
                 m: "m",
                 confirm_restart: "¿Está seguro de что desea reiniciar el dispositivo?",
-                maps_placeholder: "Mapas en desarrollo..."
+                maps_placeholder: "Mapas en desarrollo...",
+                m_left: "Motor Izquierdo",
+                m_right: "Motor Derecho"
             }
         };
 
@@ -510,22 +539,32 @@ def index():
 
 @app.route('/move/<direction>', methods=['POST'])
 def move(direction):
-    if direction == "forward":
+    process_movement_cmd(direction.upper())
+    return "OK", 200
+
+def process_movement_cmd(cmd):
+    print(f"Executing: {cmd}")
+    if cmd == "FORWARD":
         set_motor(1, "FORWARD")
         set_motor(2, "FORWARD")
-    elif direction == "backward":
+    elif cmd == "BACKWARD":
         set_motor(1, "BACKWARD")
         set_motor(2, "BACKWARD")
-    elif direction == "left":
+    elif cmd == "LEFT":
         set_motor(1, "BACKWARD")
         set_motor(2, "FORWARD")
-    elif direction == "right":
+    elif cmd == "RIGHT":
         set_motor(1, "FORWARD")
         set_motor(2, "BACKWARD")
-    elif direction == "stop":
+    elif cmd == "STOP":
         set_motor(1, "STOP")
         set_motor(2, "STOP")
-    return "OK", 200
+    elif cmd == "M1_FORWARD": set_motor(1, "FORWARD")
+    elif cmd == "M1_BACKWARD": set_motor(1, "BACKWARD")
+    elif cmd == "M1_STOP": set_motor(1, "STOP")
+    elif cmd == "M2_FORWARD": set_motor(2, "FORWARD")
+    elif cmd == "M2_BACKWARD": set_motor(2, "BACKWARD")
+    elif cmd == "M2_STOP": set_motor(2, "STOP")
 
 @app.route('/update', methods=['POST'])
 def update():
@@ -631,19 +670,7 @@ def server_loop():
                     print("Received:", cmd_str)
                     
                     # Protocol Handling
-                    if cmd_str == "M1_FORWARD":
-                        set_motor(1, "FORWARD")
-                    elif cmd_str == "M1_BACKWARD":
-                        set_motor(1, "BACKWARD")
-                    elif cmd_str == "M1_STOP":
-                        set_motor(1, "STOP")
-                    elif cmd_str == "M2_FORWARD":
-                        set_motor(2, "FORWARD")
-                    elif cmd_str == "M2_BACKWARD":
-                        set_motor(2, "BACKWARD")
-                    elif cmd_str == "M2_STOP":
-                        set_motor(2, "STOP")
-                    elif cmd_str.startswith("SPEED:"):
+                    if cmd_str.startswith("SPEED:"):
                         try:
                             val = int(cmd_str.split(":")[1])
                             duty = map_speed(val)
@@ -652,6 +679,8 @@ def server_loop():
                             print(f"Speed set to {duty}%")
                         except ValueError:
                             print("Invalid Speed Value")
+                    else:
+                        process_movement_cmd(cmd_str)
                     
             except IOError:
                 print("Connection disconnected")

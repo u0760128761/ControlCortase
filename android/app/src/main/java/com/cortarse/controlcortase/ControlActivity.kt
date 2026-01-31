@@ -17,15 +17,12 @@ class ControlActivity : AppCompatActivity() {
     private lateinit var seekBarSpeed: SeekBar
     private lateinit var tvSpeed: TextView
 
-    // Motor 1 Buttons
-    private lateinit var btnM1Fwd: Button
-    private lateinit var btnM1Back: Button
-    private lateinit var btnM1Stop: Button
-
-    // Motor 2 Buttons
-    private lateinit var btnM2Fwd: Button
-    private lateinit var btnM2Back: Button
-    private lateinit var btnM2Stop: Button
+    // D-Pad Buttons
+    private lateinit var btnForward: Button
+    private lateinit var btnBackward: Button
+    private lateinit var btnLeft: Button
+    private lateinit var btnRight: Button
+    private lateinit var btnStop: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,13 +50,11 @@ class ControlActivity : AppCompatActivity() {
         seekBarSpeed = findViewById(R.id.seekBarSpeed)
         tvSpeed = findViewById(R.id.tvSpeed)
 
-        btnM1Fwd = findViewById(R.id.btnM1Fwd)
-        btnM1Back = findViewById(R.id.btnM1Back)
-        btnM1Stop = findViewById(R.id.btnM1Stop)
-
-        btnM2Fwd = findViewById(R.id.btnM2Fwd)
-        btnM2Back = findViewById(R.id.btnM2Back)
-        btnM2Stop = findViewById(R.id.btnM2Stop)
+        btnForward = findViewById(R.id.btnForward)
+        btnBackward = findViewById(R.id.btnBackward)
+        btnLeft = findViewById(R.id.btnLeft)
+        btnRight = findViewById(R.id.btnRight)
+        btnStop = findViewById(R.id.btnStop)
     }
 
     private fun setupListeners() {
@@ -68,15 +63,12 @@ class ControlActivity : AppCompatActivity() {
             finish()
         }
 
-        // Motor 1
-        btnM1Fwd.setOnClickListener { sendCommand("M1_FORWARD") }
-        btnM1Back.setOnClickListener { sendCommand("M1_BACKWARD") }
-        btnM1Stop.setOnClickListener { sendCommand("M1_STOP") }
-
-        // Motor 2
-        btnM2Fwd.setOnClickListener { sendCommand("M2_FORWARD") }
-        btnM2Back.setOnClickListener { sendCommand("M2_BACKWARD") }
-        btnM2Stop.setOnClickListener { sendCommand("M2_STOP") }
+        // D-Pad
+        btnForward.setOnClickListener { sendCommand("FORWARD") }
+        btnBackward.setOnClickListener { sendCommand("BACKWARD") }
+        btnLeft.setOnClickListener { sendCommand("LEFT") }
+        btnRight.setOnClickListener { sendCommand("RIGHT") }
+        btnStop.setOnClickListener { sendCommand("STOP") }
 
         // Speed
         seekBarSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {

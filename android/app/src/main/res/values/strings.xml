@@ -6,11 +6,11 @@
     <string name="status_disconnected">Disconnected</string>
     <string name="status_connected">Connected</string>
     <string name="status_connecting">Connecting...</string>
-    <string name="label_m1">Motor 1</string>
-    <string name="label_m2">Motor 2</string>
+    <string name="label_m1">Left Motor (GPIO 17, 18, 23)</string>
+    <string name="label_m2">Right Motor (GPIO 27, 22, 24)</string>
     <string name="btn_forward">Forward</string>
     <string name="btn_backward">Backward</string>
-    <string name="btn_stop">Stop</string>
+    <string name="btn_stop">STOP</string>
     <string name="label_speed">Speed: 0%</string>
     <string name="hint_log">Log...</string>
     <string name="error_bluetooth_not_supported">Bluetooth not supported</string>
