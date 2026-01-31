@@ -395,7 +395,7 @@ def update():
         # Based on file structure, it seems to be in the same folder as motor_server.py is in raspberry_pi/
         # Wait, the user said "deploy.sh" is available. Let's assume relative path "./deploy.sh" in CWD.
         subprocess.Popen(["./deploy.sh"], shell=True)
-        return "Update started. Check server logs.", 200
+        return redirect(url_for('index'))
     except Exception as e:
         return f"Error starting update: {e}", 500
 
@@ -404,7 +404,7 @@ def restart():
     try:
         # Restart the Raspberry Pi
         subprocess.Popen(["sudo", "reboot"])
-        return "Rebooting...", 200
+        return redirect(url_for('index'))
     except Exception as e:
         return f"Error restarting: {e}", 500
 
