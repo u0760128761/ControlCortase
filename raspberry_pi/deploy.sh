@@ -14,6 +14,9 @@ cd "$REPO_DIR"
 echo "Pull latest code..."
 git pull
 
+echo "Ensure deploy.sh is executable..."
+sudo chmod +x "$SRC_DIR/deploy.sh"
+
 echo "Stopping service..."
 sudo systemctl stop "$SERVICE_NAME" || true
 
