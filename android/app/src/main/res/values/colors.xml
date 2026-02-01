@@ -17,4 +17,5 @@
     <color name="colorOnSurface">#3E3B36</color>   <!-- Dark Brown Text -->
     <color name="colorPrimary">#4CAF50</color>     <!-- Muted Green -->
     <color name="colorError">#D32F2F</color>       <!-- Muted Red -->
+    <color name="colorSuccess">#388E3C</color>     <!-- Muted Green -->
 </resources>

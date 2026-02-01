@@ -14,6 +14,8 @@ import androidx.core.view.isVisible
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.widget.ImageButton
+import org.json.JSONObject
 
 class ControlActivity : AppCompatActivity() {
 
@@ -35,10 +37,17 @@ class ControlActivity : AppCompatActivity() {
     private lateinit var btnStop: Button
 
     // Admin
-    private lateinit var btnUpdate: Button
-    private lateinit var btnRestart: Button
-    private lateinit var btnDisconnect: Button
+    private lateinit var btnAdminHeader: ImageButton
+    private lateinit var btnConfig: Button // Repurposed for sub-screen if needed, but we'll use PopupMenu
     private lateinit var rebootOverlay: View
+
+    // Pin Labels
+    private lateinit var tvM1Fwd: TextView
+    private lateinit var tvM1Bwd: TextView
+    private lateinit var tvM1En: TextView
+    private lateinit var tvM2Fwd: TextView
+    private lateinit var tvM2Bwd: TextView
+    private lateinit var tvM2En: TextView
 
     private var isUpdating = false
     private var isChangingLanguage = false
@@ -77,9 +86,20 @@ class ControlActivity : AppCompatActivity() {
                     }
                 } else if (data.contains("RESTARTING")) {
                     showRebootOverlay()
+                } else if (data.startsWith("{")) {
+                    // Try to parse as config for dynamic pins
+                    try {
+                        val json = JSONObject(data)
+                        if (json.has("motors")) {
+                            updatePinLabels(json)
+                        }
+                    } catch (e: Exception) {}
                 }
             }
         }
+        
+        // Request initial config for labels
+        BluetoothManager.sendCommand("GET_CONFIG")
     }
 
     private fun initViews() {
@@ -89,6 +109,7 @@ class ControlActivity : AppCompatActivity() {
         tvDeviceAddress = header.findViewById(R.id.headerTvDeviceAddress)
         btnLanguageHeader = header.findViewById(R.id.headerBtnLanguage)
         btnScanHeader = header.findViewById(R.id.headerBtnScan)
+        btnAdminHeader = header.findViewById(R.id.headerBtnAdmin)
         containerStatusHeader = header.findViewById(R.id.headerContainerStatus)
 
         tvLog = findViewById(R.id.tvLog)
@@ -110,9 +131,13 @@ class ControlActivity : AppCompatActivity() {
         btnRight = findViewById(R.id.btnRight)
         btnStop = findViewById(R.id.btnStop)
 
-        btnUpdate = findViewById(R.id.btnUpdate)
-        btnRestart = findViewById(R.id.btnRestart)
-        btnDisconnect = findViewById(R.id.btnDisconnect)
+        tvM1Fwd = findViewById(R.id.tv_m1_fwd)
+        tvM1Bwd = findViewById(R.id.tv_m1_bwd)
+        tvM1En = findViewById(R.id.tv_m1_en)
+        tvM2Fwd = findViewById(R.id.tv_m2_fwd)
+        tvM2Bwd = findViewById(R.id.tv_m2_bwd)
+        tvM2En = findViewById(R.id.tv_m2_en)
+
         rebootOverlay = findViewById(R.id.rebootOverlay)
     }
 
@@ -128,6 +153,7 @@ class ControlActivity : AppCompatActivity() {
                 .setNegativeButton(R.string.btn_no, null)
                 .show()
         }
+        btnAdminHeader.setOnClickListener { showAdminMenu() }
         containerStatusHeader.setOnClickListener {
             // Tapping "Connected" should disconnect
             BluetoothManager.close()
@@ -140,30 +166,6 @@ class ControlActivity : AppCompatActivity() {
         btnLeft.setOnClickListener { sendCommand("LEFT") }
         btnRight.setOnClickListener { sendCommand("RIGHT") }
         btnStop.setOnClickListener { sendCommand("STOP") }
-
-        // Admin
-        btnUpdate.setOnClickListener {
-            isUpdating = true
-            updateLogBuilder.setLength(0)
-            updateLog("Starting deployment...")
-            sendCommand("UPDATE")
-        }
-
-        btnRestart.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle(R.string.btn_restart)
-                .setMessage(R.string.confirm_restart)
-                .setPositiveButton("OK") { _, _ ->
-                    sendCommand("RESTART")
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
-        
-        btnDisconnect.setOnClickListener {
-            BluetoothManager.close()
-            finish()
-        }
 
         // Speed
         seekBarSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -186,6 +188,60 @@ class ControlActivity : AppCompatActivity() {
             }
         })
     }
+
+    private fun showAdminMenu() {
+        val popup = androidx.appcompat.widget.PopupMenu(this, btnAdminHeader)
+        popup.menu.add(getString(R.string.btn_update))
+        popup.menu.add(getString(R.string.btn_restart))
+        popup.menu.add(getString(R.string.tab_config))
+        popup.menu.add(getString(R.string.btn_disconnect))
+
+        popup.setOnMenuItemClickListener { item ->
+            when (item.title) {
+                getString(R.string.btn_update) -> {
+                    isUpdating = true
+                    updateLogBuilder.setLength(0)
+                    updateLog("Starting deployment...")
+                    sendCommand("UPDATE")
+                }
+                getString(R.string.btn_restart) -> {
+                    AlertDialog.Builder(this)
+                        .setTitle(R.string.btn_restart)
+                        .setMessage(R.string.confirm_restart)
+                        .setPositiveButton("OK") { _, _ -> sendCommand("RESTART") }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+                getString(R.string.tab_config) -> {
+                    val intent = android.content.Intent(this, ConfigActivity::class.java)
+                    startActivity(intent)
+                }
+                getString(R.string.btn_disconnect) -> {
+                    BluetoothManager.close()
+                    finish()
+                }
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun updatePinLabels(json: JSONObject) {
+        try {
+            val motors = json.getJSONObject("motors")
+            val m1 = motors.getJSONObject("left")
+            val m2 = motors.getJSONObject("right")
+
+            tvM1Fwd.text = m1.getInt("forward").toString()
+            tvM1Bwd.text = m1.getInt("backward").toString()
+            tvM1En.text = m1.getInt("enable").toString()
+
+            tvM2Fwd.text = m2.getInt("forward").toString()
+            tvM2Bwd.text = m2.getInt("backward").toString()
+            tvM2En.text = m2.getInt("enable").toString()
+        } catch (e: Exception) {}
+    }
+
 
     private fun showRebootOverlay() {
         rebootOverlay.visibility = View.VISIBLE

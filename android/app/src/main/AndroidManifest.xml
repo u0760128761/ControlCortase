@@ -37,6 +37,10 @@
         <activity
             android:name=".ControlActivity"
             android:exported="false" />
+        
+        <activity
+            android:name=".ConfigActivity"
+            android:exported="false" />
             
     </application>
 

@@ -3,15 +3,68 @@ import threading
 import subprocess
 import os
 import queue
-from flask import Flask, render_template_string, request, redirect, url_for, Response
-from gpiozero import Motor
+from flask import Flask, render_template_string, request, redirect, url_for, Response, jsonify
+from gpiozero import Motor, DistanceSensor
+import json
 
-# --- Motor Configuration (L298N + gpiozero) ---
-# Left Motor (M1): Forward=17, Backward=18, Speed Control (Enable)=23
-left_motor = Motor(forward=17, backward=18, enable=23)
+# --- Configuration Persistence ---
+CONFIG_FILE = "config.json"
+DEFAULT_CONFIG = {
+    "motors": {
+        "left": {"forward": 17, "backward": 18, "enable": 23},
+        "right": {"forward": 27, "backward": 22, "enable": 24}
+    },
+    "sensor": {"trigger": 20, "echo": 21} # Default placeholder pins
+}
 
-# Right Motor (M2): Forward=27, Backward=22, Speed Control (Enable)=24
-right_motor = Motor(forward=27, backward=22, enable=24)
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading config: {e}")
+    return DEFAULT_CONFIG
+
+def save_config(config):
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(config, f, indent=4)
+    except Exception as e:
+        print(f"Error saving config: {e}")
+
+# --- Motor & Sensor Initialization ---
+current_config = load_config()
+left_motor = None
+right_motor = None
+distance_sensor = None
+
+def init_peripherals():
+    global left_motor, right_motor, distance_sensor, current_config
+    
+    # Clean up existing objects if any
+    if left_motor: left_motor.close()
+    if right_motor: right_motor.close()
+    if distance_sensor: distance_sensor.close()
+
+    m = current_config["motors"]
+    s = current_config["sensor"]
+    
+    try:
+        left_motor = Motor(forward=m["left"]["forward"], backward=m["left"]["backward"], enable=m["left"]["enable"])
+        right_motor = Motor(forward=m["right"]["forward"], backward=m["right"]["backward"], enable=m["right"]["enable"])
+        print(f"Motors initialized: L({m['left']}), R({m['right']})")
+    except Exception as e:
+        print(f"Error initializing motors: {e}")
+
+    try:
+        if s.get("trigger") and s.get("echo"):
+            distance_sensor = DistanceSensor(trigger=s["trigger"], echo=s["echo"])
+            print(f"Sensor initialized: Trigger={s['trigger']}, Echo={s['echo']}")
+    except Exception as e:
+        print(f"Error initializing sensor: {e}")
+
+init_peripherals()
 
 current_speed = 0.5 # Default 0.0-1.0
 
@@ -342,6 +395,39 @@ HTML_TEMPLATE = """
             margin-bottom: 20px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .config-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        .config-card { background: white; border-radius: 15px; padding: 15px; box-shadow: var(--shadow); }
+        .config-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .config-label { font-weight: 600; font-size: 0.9rem; }
+        .config-input { width: 60px; padding: 5px; border: 1px solid #ddd; border-radius: 5px; text-align: center; }
+        .btn-scan { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        .btn-save { background: var(--success); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        .scan-result { margin-top: 15px; padding: 10px; background: #e0f2f1; border-radius: 10px; font-size: 0.85rem; display: none; }
+        
+        /* Admin Dropdown */
+        .admin-dropdown { position: relative; display: inline-block; cursor: pointer; }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            background-color: white;
+            min-width: 160px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 1000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .dropdown-content a {
+            color: black;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+        .dropdown-content a:hover { background-color: #f1f1f1; }
+        .admin-dropdown:hover .dropdown-content { display: block; }
     </style>
 </head>
 <body>
@@ -383,15 +469,21 @@ HTML_TEMPLATE = """
                 <div class="device-mac-header">{{ client }}</div>
                 {% endif %}
             </div>
-            <div style="flex: 1; text-align: right; opacity: 0.7;">
-                {{ '📱' if connected else '💤' }}
+            <div style="flex: 1; text-align: right;">
+                <div class="admin-dropdown">
+                    <span style="font-size: 1.5rem; opacity: 0.8;">⚙️</span>
+                    <div class="dropdown-content">
+                        <a href="#" onclick="startUpdate()" data-t="btn_update">Update (Deploy)</a>
+                        <a href="#" onclick="confirmRestart()" data-t="btn_restart">Restart Pi</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="nav-tabs">
         <div class="tab-link active" onclick="showTab('control')" data-t="tab_control">Управление</div>
-        <div class="tab-link" onclick="showTab('admin')" data-t="tab_admin">Админ</div>
+        <div class="tab-link" onclick="showTab('config')" data-t="tab_config">Конфигурация</div>
         <div class="tab-link" onclick="showTab('maps')" data-t="tab_maps">Карты</div>
     </div>
 
@@ -410,39 +502,77 @@ HTML_TEMPLATE = """
                     <div class="motor-side">
                         <div data-t="m_left">Левый мотор</div>
                         <div class="motor-pins">
-                            <span data-t="pin_fwd">Fwd</span>:17, 
-                            <span data-t="pin_bwd">Bwd</span>:18, 
-                            <span data-t="pin_spd">Spd</span>:23
+                            <span data-t="pin_fwd">Fwd</span>:{{ config.motors.left.forward }}, 
+                            <span data-t="pin_bwd">Bwd</span>:{{ config.motors.left.backward }}, 
+                            <span data-t="pin_spd">Spd</span>:{{ config.motors.left.enable }}
                         </div>
                     </div>
                     <div class="motor-side">
                         <div data-t="m_right">Правый мотор</div>
                         <div class="motor-pins">
-                            <span data-t="pin_fwd">Fwd</span>:27, 
-                            <span data-t="pin_bwd">Bwd</span>:22, 
-                            <span data-t="pin_spd">Spd</span>:24
+                            <span data-t="pin_fwd">Fwd</span>:{{ config.motors.right.forward }}, 
+                            <span data-t="pin_bwd">Bwd</span>:{{ config.motors.right.backward }}, 
+                            <span data-t="pin_spd">Spd</span>:{{ config.motors.right.enable }}
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Admin Tab -->
-        <div id="admin" class="tab-content">
-            <div class="admin-grid">
-                <form onsubmit="event.preventDefault(); startUpdate();">
-                    <button type="submit" class="action-card">
-                        <div class="action-icon">🔄</div>
-                        <div class="action-label" data-t="btn_update">Update (Deploy)</div>
-                    </button>
-                </form>
-
-                <div class="action-card" onclick="confirmRestart()">
-                    <div class="action-icon">⚠️</div>
-                    <div class="action-label" data-t="btn_restart">Restart Pi</div>
+        <!-- Configuration Tab -->
+        <div id="config" class="tab-content">
+            <div class="config-grid">
+                <div class="config-card">
+                    <h3 style="margin-top:0" data-t="m_left">Левый мотор</h3>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_fwd">Вперед</span>
+                        <input type="number" class="config-input" id="cfg_m1_fwd" value="{{ config.motors.left.forward }}">
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_bwd">Назад</span>
+                        <input type="number" class="config-input" id="cfg_m1_bwd" value="{{ config.motors.left.backward }}">
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_spd">Скорость</span>
+                        <input type="number" class="config-input" id="cfg_m1_en" value="{{ config.motors.left.enable }}">
+                    </div>
                 </div>
+
+                <div class="config-card">
+                    <h3 style="margin-top:0" data-t="m_right">Правый мотор</h3>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_fwd">Вперед</span>
+                        <input type="number" class="config-input" id="cfg_m2_fwd" value="{{ config.motors.right.forward }}">
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_bwd">Назад</span>
+                        <input type="number" class="config-input" id="cfg_m2_bwd" value="{{ config.motors.right.backward }}">
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_spd">Скорость</span>
+                        <input type="number" class="config-input" id="cfg_m2_en" value="{{ config.motors.right.enable }}">
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <h3 style="margin-top:0" data-t="tab_config_sensor">Датчик HC-SR04</h3>
+                    <div class="config-row">
+                        <span class="config-label">Trigger</span>
+                        <input type="number" class="config-input" id="cfg_s_trig" value="{{ config.sensor.trigger }}">
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label">Echo</span>
+                        <input type="number" class="config-input" id="cfg_s_echo" value="{{ config.sensor.echo }}">
+                    </div>
+                    <button class="btn-scan" onclick="scanHCSR04()" data-t="btn_scan">Сканировать HC-SR04</button>
+                    <div id="scanResult" class="scan-result"></div>
+                </div>
+
+                <button class="btn-save" onclick="saveConfig()" data-t="btn_save">Сохранить и Применить</button>
             </div>
         </div>
+
+        <!-- Admin Tab Removed and moved to Header Dropdown -->
 
         <!-- Maps Tab -->
         <div id="maps" class="tab-content">
@@ -492,7 +622,14 @@ HTML_TEMPLATE = """
                 error_update: "Ошибка при запуске обновления",
                 pin_fwd: "Вперед",
                 pin_bwd: "Назад",
-                pin_spd: "Скорость"
+                pin_spd: "Скорость",
+                tab_config: "Конфигурация",
+                tab_config_sensor: "Датчик HC-SR04",
+                btn_scan: "Сканировать HC-SR04",
+                btn_save: "Сохранить и Применить",
+                scanning: "Сканирование...",
+                scan_not_found: "Устройства не найдены",
+                config_saved: "Конфигурация сохранена!"
             },
             en: {
                 app_name: "Control Cortase",
@@ -516,7 +653,14 @@ HTML_TEMPLATE = """
                 error_update: "Error starting update",
                 pin_fwd: "Fwd",
                 pin_bwd: "Bwd",
-                pin_spd: "Spd"
+                pin_spd: "Spd",
+                tab_config: "Configuration",
+                tab_config_sensor: "HC-SR04 Sensor",
+                btn_scan: "Scan HC-SR04",
+                btn_save: "Save & Apply",
+                scanning: "Scanning...",
+                scan_not_found: "No devices found",
+                config_saved: "Configuration saved!"
             },
             es: {
                 app_name: "Control Cortase",
@@ -540,7 +684,14 @@ HTML_TEMPLATE = """
                 error_update: "Error al iniciar la actualización",
                 pin_fwd: "Avance",
                 pin_bwd: "Retro",
-                pin_spd: "Veloc"
+                pin_spd: "Veloc",
+                tab_config: "Configuración",
+                tab_config_sensor: "Sensor HC-SR04",
+                btn_scan: "Escanear HC-SR04",
+                btn_save: "Guardar y Aplicar",
+                scanning: "Escaneando...",
+                scan_not_found: "No se encontraron dispositivos",
+                config_saved: "¡Configuración guardada!"
             }
         };
 
@@ -649,6 +800,68 @@ HTML_TEMPLATE = """
             startRefresh(parseInt(val));
         }
 
+        function scanHCSR04() {
+            const btn = document.querySelector('.btn-scan');
+            const res = document.getElementById('scanResult');
+            const lang = localStorage.getItem('appLang') || 'ru';
+            
+            btn.disabled = true;
+            res.style.display = 'block';
+            res.textContent = translations[lang].scanning;
+
+            fetch('/config/scan', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success' && data.results.length > 0) {
+                        res.innerHTML = "<strong>Найдены устройства:</strong><br>" + 
+                            data.results.map(r => `Trigger: ${r.trigger}, Echo: ${r.echo}`).join('<br>');
+                        // Suggest first result
+                        document.getElementById('cfg_s_trig').value = data.results[0].trigger;
+                        document.getElementById('cfg_s_echo').value = data.results[0].echo;
+                    } else {
+                        res.textContent = translations[lang].scan_not_found;
+                    }
+                })
+                .finally(() => btn.disabled = false);
+        }
+
+        function saveConfig() {
+            const config = {
+                motors: {
+                    left: {
+                        forward: parseInt(document.getElementById('cfg_m1_fwd').value),
+                        backward: parseInt(document.getElementById('cfg_m1_bwd').value),
+                        enable: parseInt(document.getElementById('cfg_m1_en').value)
+                    },
+                    right: {
+                        forward: parseInt(document.getElementById('cfg_m2_fwd').value),
+                        backward: parseInt(document.getElementById('cfg_m2_bwd').value),
+                        enable: parseInt(document.getElementById('cfg_m2_en').value)
+                    }
+                },
+                sensor: {
+                    trigger: parseInt(document.getElementById('cfg_s_trig').value),
+                    echo: parseInt(document.getElementById('cfg_s_echo').value)
+                }
+            };
+
+            fetch('/config/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const lang = localStorage.getItem('appLang') || 'ru';
+                    alert(translations[lang].config_saved);
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        }
+
         window.onload = () => {
             applyTranslations();
             const savedRefresh = localStorage.getItem('refreshInterval') || "0";
@@ -669,7 +882,58 @@ HTML_TEMPLATE = """
 @app.route('/')
 def index():
     is_connected = BT_STATUS == "Connected"
-    return render_template_string(HTML_TEMPLATE, status=BT_STATUS, client=BT_CLIENT_INFO, device_name=BT_DEVICE_NAME, connected=is_connected)
+    return render_template_string(HTML_TEMPLATE, status=BT_STATUS, client=BT_CLIENT_INFO, device_name=BT_DEVICE_NAME, connected=is_connected, config=current_config)
+
+@app.route('/config', methods=['GET'])
+def get_config():
+    return jsonify(current_config)
+
+@app.route('/config/save', methods=['POST'])
+def api_save_config():
+    global current_config
+    new_config = request.json
+    save_config(new_config)
+    current_config = new_config
+    init_peripherals()
+    return jsonify({"status": "success"})
+
+@app.route('/config/scan', methods=['POST'])
+def api_scan_sensor():
+    import time
+    from gpiozero import DigitalOutputDevice, DigitalInputDevice
+    
+    results = []
+    # Simplified scan for demo - in reality, we'd loop through possible GPIO pins
+    # Common Trigger/Echo candidates
+    candidates = [14, 15, 18, 23, 24, 25, 8, 7, 12, 16, 20, 21]
+    
+    # Let's say we only check a few pairs to avoid hanging
+    for trig in [20]:
+        for echo in [21]:
+            try:
+                t = DigitalOutputDevice(trig)
+                e = DigitalInputDevice(echo, pull_up=False)
+                
+                t.on()
+                time.sleep(0.00001)
+                t.off()
+                
+                start = time.time()
+                timeout = start + 0.1
+                while e.value == 0 and time.time() < timeout: pass
+                pulse_start = time.time()
+                while e.value == 1 and time.time() < timeout: pass
+                pulse_end = time.time()
+                
+                t.close()
+                e.close()
+                
+                if pulse_end - pulse_start > 0:
+                    results.append({"trigger": trig, "echo": echo})
+            except:
+                pass
+                
+    return jsonify({"status": "success", "results": results})
 
 @app.route('/move/<direction>', methods=['POST'])
 def move(direction):
@@ -864,14 +1128,47 @@ def server_loop():
                             threading.Thread(target=process_update_bt, args=(client_sock,), daemon=True).start()
                         else:
                             client_sock.send("Update already in progress\n".encode())
-                    elif cmd_str == "RESTART":
-                        print("Restart requested via BT")
-                        client_sock.send("RESTARTING\n".encode())
-                        def do_reboot_bt():
-                            import time
-                            time.sleep(2)
-                            subprocess.run(["sudo", "reboot"])
                         threading.Thread(target=do_reboot_bt, daemon=True).start()
+                    elif cmd_str == "GET_CONFIG":
+                        print("Config requested via BT")
+                        client_sock.send((json.dumps(current_config) + "\n").encode())
+                    elif cmd_str.startswith("SAVE_CONFIG:"):
+                        print("Config save requested via BT")
+                        try:
+                            config_json = cmd_str.split("SAVE_CONFIG:")[1]
+                            new_config = json.loads(config_json)
+                            save_config(new_config)
+                            current_config = new_config
+                            init_peripherals()
+                            client_sock.send("CONFIG_SAVED\n".encode())
+                        except Exception as e:
+                            client_sock.send(f"ERROR_SAVING_CONFIG:{e}\n".encode())
+                    elif cmd_str == "SCAN_CONFIG":
+                        print("Scan requested via BT")
+                        # We recycle the scan logic from api_scan_sensor
+                        import time
+                        from gpiozero import DigitalOutputDevice, DigitalInputDevice
+                        results = []
+                        # For brevity in BT loop, just check the default/current sensor pins
+                        trig, echo = 20, 21
+                        try:
+                            t = DigitalOutputDevice(trig)
+                            e = DigitalInputDevice(echo, pull_up=False)
+                            t.on()
+                            time.sleep(0.00001)
+                            t.off()
+                            start = time.time()
+                            timeout = start + 0.1
+                            while e.value == 0 and time.time() < timeout: pass
+                            pulse_start = time.time()
+                            while e.value == 1 and time.time() < timeout: pass
+                            pulse_end = time.time()
+                            t.close()
+                            e.close()
+                            if pulse_end - pulse_start > 0:
+                                results.append({"trigger": trig, "echo": echo})
+                        except: pass
+                        client_sock.send((json.dumps({"status": "success", "results": results}) + "\n").encode())
                     else:
                         process_movement_cmd(cmd_str)
                     
