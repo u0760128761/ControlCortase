@@ -16,11 +16,14 @@ import java.util.Locale
 
 class ControlActivity : AppCompatActivity() {
 
-    private lateinit var tvStatus: TextView
-    private lateinit var btnDisconnect: Button
     private lateinit var tvLog: TextView
     private lateinit var seekBarSpeed: SeekBar
     private lateinit var tvSpeed: TextView
+    private lateinit var tvDeviceName: TextView
+    private lateinit var tvDeviceAddress: TextView
+    private lateinit var btnLanguageHeader: android.widget.ImageButton
+    private lateinit var btnScanHeader: android.widget.ImageButton
+    private lateinit var tvStatusHeader: android.widget.TextView
 
     // D-Pad Buttons
     private lateinit var btnForward: Button
@@ -45,12 +48,12 @@ class ControlActivity : AppCompatActivity() {
         setupListeners()
 
         updateLog("Control Activity Started")
-        tvStatus.text = getString(R.string.status_connected)
+        tvStatusHeader.text = getString(R.string.status_connected)
 
         BluetoothManager.onConnectionFailed = {
             runOnUiThread {
                 if (!rebootOverlay.isVisible) {
-                    tvStatus.text = getString(R.string.status_disconnected)
+                    tvStatusHeader.text = getString(R.string.status_disconnected)
                     updateLog("Error: Connection lost")
                     finish()
                 }
@@ -75,11 +78,25 @@ class ControlActivity : AppCompatActivity() {
     }
 
     private fun initViews() {
-        tvStatus = findViewById(R.id.tvStatus)
-        btnDisconnect = findViewById(R.id.btnDisconnect)
+        val header = findViewById<View>(R.id.layoutHeader)
+        tvStatusHeader = header.findViewById(R.id.headerTvStatus)
+        tvDeviceName = header.findViewById(R.id.headerTvDeviceName)
+        tvDeviceAddress = header.findViewById(R.id.headerTvDeviceAddress)
+        btnLanguageHeader = header.findViewById(R.id.headerBtnLanguage)
+        btnScanHeader = header.findViewById(R.id.headerBtnScan)
+
         tvLog = findViewById(R.id.tvLog)
         seekBarSpeed = findViewById(R.id.seekBarSpeed)
         tvSpeed = findViewById(R.id.tvSpeed)
+
+        updateLanguageIcon()
+ 
+        BluetoothManager.lastDevice?.let { device ->
+            tvDeviceName.visibility = View.VISIBLE
+            tvDeviceAddress.visibility = View.VISIBLE
+            tvDeviceName.text = getString(R.string.label_device_name, device.name ?: "Unknown")
+            tvDeviceAddress.text = getString(R.string.label_device_address, device.address)
+        }
 
         btnForward = findViewById(R.id.btnForward)
         btnBackward = findViewById(R.id.btnBackward)
@@ -93,7 +110,8 @@ class ControlActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        btnDisconnect.setOnClickListener {
+        btnLanguageHeader.setOnClickListener { cycleLanguage() }
+        btnScanHeader.setOnClickListener {
             BluetoothManager.close()
             finish()
         }
@@ -131,7 +149,7 @@ class ControlActivity : AppCompatActivity() {
                 progress: Int,
                 fromUser: Boolean
             ) {
-                tvSpeed.text = "Speed: $progress%"
+                tvSpeed.text = getString(R.string.label_speed, progress)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -163,7 +181,7 @@ class ControlActivity : AppCompatActivity() {
                 if (success) {
                     rebootOverlay.visibility = View.GONE
                     updateLog("Reconnected successfully")
-                    tvStatus.text = getString(R.string.status_connected)
+                    tvStatusHeader.text = getString(R.string.status_connected)
                 } else {
                     // Retry every 5 seconds
                     Handler(Looper.getMainLooper()).postDelayed({
@@ -189,5 +207,40 @@ class ControlActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         BluetoothManager.close()
+    }
+
+    private fun cycleLanguage() {
+        val currentLang = resources.configuration.locales.get(0).language
+        val newLang = when (currentLang) {
+            "en" -> "ru"
+            "ru" -> "es"
+            else -> "en"
+        }
+        setLocale(newLang)
+    }
+
+    private fun updateLanguageIcon() {
+        val currentLang = resources.configuration.locales.get(0).language
+        val iconRes = when (currentLang) {
+            "ru" -> R.drawable.ic_flag_ru
+            "es" -> R.drawable.ic_flag_es
+            else -> R.drawable.ic_flag_us
+        }
+        btnLanguageHeader.setImageResource(iconRes)
+    }
+
+    private fun setLocale(languageCode: String) {
+        val prefs = getSharedPreferences("Settings", Context.MODE_PRIVATE)
+        prefs.edit().putString("My_Lang", languageCode).apply()
+
+        val locale = java.util.Locale(languageCode)
+        java.util.Locale.setDefault(locale)
+        val config = android.content.res.Configuration()
+        config.setLocale(locale)
+        baseContext.resources.updateConfiguration(config, baseContext.resources.displayMetrics)
+        
+        val intent = intent
+        finish()
+        startActivity(intent)
     }
 }

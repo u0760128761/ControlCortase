@@ -12,11 +12,23 @@
     <string name="btn_forward">Adelante</string>
     <string name="btn_backward">Atrás</string>
     <string name="btn_stop">Parar</string>
-    <string name="label_speed">Velocidad: 0%</string>
+    <string name="label_speed">Velocidad: %d%%</string>
+    <string name="label_admin">ADMINISTRACIÓN</string>
+    <string name="btn_update">Actualizar (Desplegar)</string>
+    <string name="btn_restart">Reiniciar Pi</string>
+    <string name="msg_rebooting">Sistema reiniciando...\nAuto-reconexión en 20s</string>
+    <string name="label_device_name">Dispositivo: %s</string>
+    <string name="label_device_address">Dirección: %s</string>
+    <string name="title_update_logs">Registros de despliegue</string>
+    <string name="pin_fwd">Adel</string>
+    <string name="pin_bwd">Atr</string>
+    <string name="pin_spd">Vel</string>
+    <string name="confirm_restart">¿Está seguro de que desea reiniciar el dispositivo?</string>
     <string name="hint_log">Registro...</string>
     <string name="error_bluetooth_not_supported">Bluetooth no soportado</string>
     <string name="error_connect_failed">Error de conexión</string>
     <!-- New Strings -->
     <string name="btn_language">Idioma / Language / Язык</string>
+    <string name="label_recent_devices">Dispositivos recientes</string>
     <string name="btn_docs">Documentación</string>
 </resources>

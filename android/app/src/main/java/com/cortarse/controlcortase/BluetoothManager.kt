@@ -16,7 +16,7 @@ object BluetoothManager {
     private var socket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
     private var inputStream: InputStream? = null
-    private var lastDevice: BluetoothDevice? = null
+    var lastDevice: BluetoothDevice? = null
     private var readThread: Thread? = null
     
     var onConnectionFailed: (() -> Unit)? = null

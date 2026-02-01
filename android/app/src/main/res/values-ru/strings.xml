@@ -12,11 +12,23 @@
     <string name="btn_forward">Вперед</string>
     <string name="btn_backward">Назад</string>
     <string name="btn_stop">Стоп</string>
-    <string name="label_speed">Скорость: 0%</string>
+    <string name="label_speed">Скорость: %d%%</string>
+    <string name="label_admin">АДМИНИСТРИРОВАНИЕ</string>
+    <string name="btn_update">Обновить (Deploy)</string>
+    <string name="btn_restart">Перезагрузить Pi</string>
+    <string name="msg_rebooting">Система перезагружается...\nАвто-подключение через 20с</string>
+    <string name="label_device_name">Устройство: %s</string>
+    <string name="label_device_address">Адрес: %s</string>
+    <string name="title_update_logs">Логи деплоя</string>
+    <string name="pin_fwd">Впер</string>
+    <string name="pin_bwd">Наз</string>
+    <string name="pin_spd">Скор</string>
+    <string name="confirm_restart">Вы уверены, что хотите перезагрузить устройство?</string>
     <string name="hint_log">Лог...</string>
     <string name="error_bluetooth_not_supported">Bluetooth не поддерживается</string>
     <string name="error_connect_failed">Ошибка подключения</string>
     <!-- New Strings -->
     <string name="btn_language">Язык / Language / Idioma</string>
+    <string name="label_recent_devices">История устройств</string>
     <string name="btn_docs">Документация</string>
 </resources>

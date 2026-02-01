@@ -26,8 +26,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var deviceList: ListView
     private lateinit var deviceAdapter: ArrayAdapter<String>
+    private lateinit var spinnerHistory: android.widget.Spinner
+    private lateinit var historyAdapter: ArrayAdapter<String>
     private val devices = ArrayList<BluetoothDevice>()
     private val deviceNames = ArrayList<String>()
+    private val historyNames = ArrayList<String>()
+    private val historyAddresses = ArrayList<String>()
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val manager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -47,6 +51,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var btnLanguage: android.widget.ImageButton
+    private lateinit var btnScanHeader: android.widget.ImageButton
+    private lateinit var tvStatusHeader: android.widget.TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,7 +64,9 @@ class MainActivity : AppCompatActivity() {
         btnLanguage = findViewById(R.id.btnLanguage)
         val btnDocs = findViewById<android.widget.ImageButton>(R.id.btnDocs)
 
-        updateLanguageIcon()
+        loadLocale()
+        initHeader()
+        initHistory()
 
         deviceAdapter = ArrayAdapter(this, R.layout.item_device, android.R.id.text1, deviceNames)
         deviceList.adapter = deviceAdapter
@@ -82,6 +90,69 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun initHeader() {
+        val header = findViewById<View>(R.id.layoutHeader)
+        btnLanguage = header.findViewById(R.id.headerBtnLanguage)
+        btnScanHeader = header.findViewById(R.id.headerBtnScan)
+        tvStatusHeader = header.findViewById(R.id.headerTvStatus)
+
+        updateLanguageIcon()
+        tvStatusHeader.text = getString(R.string.status_disconnected)
+
+        btnLanguage.setOnClickListener { cycleLanguage() }
+        btnScanHeader.setOnClickListener { checkPermissionsAndScan() }
+    }
+
+    private fun initHistory() {
+        spinnerHistory = findViewById(R.id.spinnerHistory)
+        historyAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, historyNames)
+        historyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerHistory.adapter = historyAdapter
+
+        loadHistory()
+
+        spinnerHistory.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (position > 0) {
+                    val address = historyAddresses[position - 1]
+                    val device = bluetoothAdapter?.getRemoteDevice(address)
+                    device?.let { connectToDevice(it) }
+                }
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+    }
+
+    private fun loadHistory() {
+        val prefs = getSharedPreferences("DeviceHistory", Context.MODE_PRIVATE)
+        val historySet = prefs.getStringSet("devices", emptySet()) ?: emptySet()
+        
+        historyNames.clear()
+        historyAddresses.clear()
+        historyNames.add(getString(R.string.label_recent_devices)) // Default item
+        
+        historySet.forEach { entry ->
+            val parts = entry.split("|")
+            if (parts.size == 2) {
+                historyNames.add("${parts[0]}\n${parts[1]}")
+                historyAddresses.add(parts[1])
+            }
+        }
+        historyAdapter.notifyDataSetChanged()
+    }
+
+    private fun saveToHistory(device: BluetoothDevice) {
+        val prefs = getSharedPreferences("DeviceHistory", Context.MODE_PRIVATE)
+        val historySet = prefs.getStringSet("devices", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+        
+        @SuppressLint("MissingPermission")
+        val entry = "${device.name ?: "Unknown"}|${device.address}"
+        historySet.add(entry)
+        
+        prefs.edit().putStringSet("devices", historySet).apply()
+        loadHistory()
+    }
+
     private fun cycleLanguage() {
         val currentLang = resources.configuration.locales.get(0).language
         val newLang = when (currentLang) {
@@ -103,6 +174,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setLocale(languageCode: String) {
+        val prefs = getSharedPreferences("Settings", Context.MODE_PRIVATE)
+        prefs.edit().putString("My_Lang", languageCode).apply()
+
         val locale = java.util.Locale(languageCode)
         java.util.Locale.setDefault(locale)
         val config = android.content.res.Configuration()
@@ -113,6 +187,18 @@ class MainActivity : AppCompatActivity() {
         val intent = intent
         finish()
         startActivity(intent)
+    }
+
+    private fun loadLocale() {
+        val prefs = getSharedPreferences("Settings", Context.MODE_PRIVATE)
+        val language = prefs.getString("My_Lang", "") ?: ""
+        if (language.isNotEmpty()) {
+            val locale = java.util.Locale(language)
+            java.util.Locale.setDefault(locale)
+            val config = android.content.res.Configuration()
+            config.setLocale(locale)
+            baseContext.resources.updateConfiguration(config, baseContext.resources.displayMetrics)
+        }
     }
 
     private fun checkPermissionsAndScan() {
@@ -185,6 +271,7 @@ class MainActivity : AppCompatActivity() {
                 progressBar.visibility = View.GONE
                 btnScan.isEnabled = true
                 if (success) {
+                    saveToHistory(device)
                     Toast.makeText(this, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
                     val intent = Intent(this, ControlActivity::class.java)
                     startActivity(intent)

@@ -804,8 +804,6 @@ def server_loop():
     server_sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     
     # Bind to any adapter on channel 1
-    # Check if we need to release the port or reuse address
-    # server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Generally not needed for RFCOMM in the same way
     
     try:
         server_sock.bind((socket.BDADDR_ANY, 1))
@@ -823,7 +821,6 @@ def server_loop():
     print(f"Waiting for connection on RFCOMM channel {port}...")
     print("Ensure your Android app is connecting to this device's MAC address on UUID/Channel 1")
     
-    # NOTE: advertise_service is removed as it caused issues and SD is strictly not necessary if we connect by MAC
     
     while True:
         try:

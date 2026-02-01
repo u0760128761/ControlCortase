@@ -17,8 +17,8 @@ git pull
 echo "Ensure deploy.sh is executable..."
 sudo chmod +x "$SRC_DIR/deploy.sh"
 
-echo "Stopping service..."
-sudo systemctl stop "$SERVICE_NAME" || true
+# echo "Stopping service..."
+# sudo systemctl stop "$SERVICE_NAME" || true
 
 echo "Creating app directory..."
 sudo mkdir -p "$APP_DIR"
@@ -44,7 +44,9 @@ fi
 echo "Fix permissions..."
 chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 
-echo "Starting service..."
-sudo systemctl start "$SERVICE_NAME"
+echo "Restarting service in background..."
+# Use systemd-run to detach the restart command from the current process tree
+# This prevents systemd from killing this script when the service stops
+sudo systemd-run --on-active=2s systemctl restart "$SERVICE_NAME"
 
 echo "Deploy finished successfully"

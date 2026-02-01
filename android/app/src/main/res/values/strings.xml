@@ -16,13 +16,17 @@
     <string name="btn_update">Update (Deploy)</string>
     <string name="btn_restart">Restart Pi</string>
     <string name="msg_rebooting">System rebooting...\nAuto-reconnecting in 20s</string>
+    <string name="label_device_name">Device: %s</string>
+    <string name="label_device_address">Address: %s</string>
     <string name="title_update_logs">Deployment Logs</string>
     <string name="pin_fwd">Fwd</string>
     <string name="pin_bwd">Bwd</string>
     <string name="pin_spd">Spd</string>
+    <string name="confirm_restart">Are you sure you want to restart the device?</string>
     <string name="hint_log">Log...</string>
     <string name="error_bluetooth_not_supported">Bluetooth not supported</string>
     <string name="error_connect_failed">Connection failed</string>
     <string name="btn_language">Language / Язык / Idioma</string>
+    <string name="label_recent_devices">Recent Devices</string>
     <string name="btn_docs">Documentation</string>
 </resources>
