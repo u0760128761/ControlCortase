@@ -7,6 +7,19 @@ from flask import Flask, render_template_string, request, redirect, url_for, Res
 from gpiozero import Motor, DistanceSensor
 import json
 
+# --- Global Logging ---
+log_queue = queue.Queue(maxsize=100)
+is_updating = False
+
+def log_msg(msg):
+    # Print to console and add to log_queue for web terminal
+    print(msg)
+    try:
+        log_queue.put(f"{msg}\n", block=False)
+    except queue.Full:
+        log_queue.get()
+        log_queue.put(f"{msg}\n")
+
 # --- Catalog & Configuration ---
 CATALOG = {
     "motor": {"default_name": "Motor", "pins": ["forward", "backward", "enable"]},
@@ -29,7 +42,7 @@ def load_config():
                 config = json.load(f)
                 # Migration: old format had "motors" and "sensor"
                 if "devices" not in config:
-                    print("Migrating legacy config...")
+                    log_msg("Migrating legacy config...")
                     new_devices = []
                     if "motors" in config:
                         m = config["motors"]
@@ -41,7 +54,7 @@ def load_config():
                     save_config(config)
                 return config
         except Exception as e:
-            print(f"Error loading config: {e}")
+            log_msg(f"Error loading config: {e}")
     return DEFAULT_CONFIG
 
 def save_config(config):
@@ -49,7 +62,7 @@ def save_config(config):
         with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=4)
     except Exception as e:
-        print(f"Error saving config: {e}")
+        log_msg(f"Error saving config: {e}")
 
 # --- Peripheral Registry ---
 current_config = load_config()
@@ -92,19 +105,6 @@ BT_STATUS = "Disconnected"
 BT_CLIENT_INFO = None
 BT_DEVICE_NAME = None
 
-# --- Maintenance State ---
-log_queue = queue.Queue(maxsize=100)
-is_updating = False
-
-def log_msg(msg):
-    # Print to console and add to log_queue for web terminal
-    print(msg)
-    try:
-        log_queue.put(f"{msg}\n", block=False)
-    except queue.Full:
-        log_queue.get()
-        log_queue.put(f"{msg}\n")
-
 def get_bt_device_name(mac):
     try:
         # Resolve MAC address to a friendly name using bluetoothctl
@@ -113,7 +113,7 @@ def get_bt_device_name(mac):
             if "Name:" in line:
                 return line.split("Name:")[1].strip()
     except Exception as e:
-        print(f"Error resolving BT name: {e}")
+        log_msg(f"Error resolving BT name: {e}")
     return "Unknown Device"
 
 app = Flask(__name__)
