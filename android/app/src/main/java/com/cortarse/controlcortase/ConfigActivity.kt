@@ -2,25 +2,22 @@ package com.cortarse.controlcortase
 
 import android.content.Context
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
-import android.widget.Button
-import android.widget.EditText
-import android.widget.Toast
+import android.view.ViewGroup
+import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import org.json.JSONArray
 import org.json.JSONObject
 
 class ConfigActivity : AppCompatActivity() {
 
-    private lateinit var etM1Fwd: EditText
-    private lateinit var etM1Bwd: EditText
-    private lateinit var etM1En: EditText
-    private lateinit var etM2Fwd: EditText
-    private lateinit var etM2Bwd: EditText
-    private lateinit var etM2En: EditText
-    private lateinit var etSTrig: EditText
-    private lateinit var etSEcho: EditText
-    private lateinit var btnScanSensor: Button
+    private lateinit var llDeviceContainer: LinearLayout
+    private lateinit var btnAddDevice: Button
     private lateinit var btnSaveConfig: Button
+    
+    private var currentScanningCard: View? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,26 +29,19 @@ class ConfigActivity : AppCompatActivity() {
     }
 
     private fun initViews() {
-        etM1Fwd = findViewById(R.id.et_m1_fwd)
-        etM1Bwd = findViewById(R.id.et_m1_bwd)
-        etM1En = findViewById(R.id.et_m1_en)
-        etM2Fwd = findViewById(R.id.et_m2_fwd)
-        etM2Bwd = findViewById(R.id.et_m2_bwd)
-        etM2En = findViewById(R.id.et_m2_en)
-        etSTrig = findViewById(R.id.et_s_trig)
-        etSEcho = findViewById(R.id.et_s_echo)
-        btnScanSensor = findViewById(R.id.btnScanSensor)
+        llDeviceContainer = findViewById(R.id.llDeviceContainer)
+        btnAddDevice = findViewById(R.id.btnAddDevice)
         btnSaveConfig = findViewById(R.id.btnSaveConfig)
 
-        btnScanSensor.setOnClickListener { scanSensor() }
+        btnAddDevice.setOnClickListener { showAddDeviceDialog() }
         btnSaveConfig.setOnClickListener { saveConfig() }
     }
 
     private fun setupHeader() {
         val header = findViewById<View>(R.id.layoutHeader)
-        val tvStatus = header.findViewById<android.widget.TextView>(R.id.headerTvStatus)
-        val tvDeviceName = header.findViewById<android.widget.TextView>(R.id.headerTvDeviceName)
-        val tvDeviceAddress = header.findViewById<android.widget.TextView>(R.id.headerTvDeviceAddress)
+        val tvStatus = header.findViewById<TextView>(R.id.headerTvStatus)
+        val tvDeviceName = header.findViewById<TextView>(R.id.headerTvDeviceName)
+        val tvDeviceAddress = header.findViewById<TextView>(R.id.headerTvDeviceAddress)
         
         tvStatus.text = getString(R.string.status_connected)
         BluetoothManager.lastDevice?.let { device ->
@@ -61,73 +51,132 @@ class ConfigActivity : AppCompatActivity() {
             tvDeviceAddress.text = getString(R.string.label_device_address, device.address)
         }
         
-        // Ensure header buttons are hidden or disabled
         header.findViewById<View>(R.id.headerBtnLanguage).visibility = View.GONE
         header.findViewById<View>(R.id.headerBtnScan).visibility = View.GONE
         header.findViewById<View>(R.id.headerBtnAdmin).visibility = View.GONE
     }
 
     private fun fetchCurrentConfig() {
-        // Since we are using Bluetooth for commands, we can request config via JSON
         BluetoothManager.sendCommand("GET_CONFIG")
-        
-        // Setup listener for response
         BluetoothManager.onDataReceived = { data ->
             runOnUiThread {
                 try {
                     val json = JSONObject(data)
-                    if (json.has("motors")) {
-                        val motors = json.getJSONObject("motors")
-                        val m1 = motors.getJSONObject("left")
-                        val m2 = motors.getJSONObject("right")
-                        val s = json.getJSONObject("sensor")
-
-                        etM1Fwd.setText(m1.getInt("forward").toString())
-                        etM1Bwd.setText(m1.getInt("backward").toString())
-                        etM1En.setText(m1.getInt("enable").toString())
-                        
-                        etM2Fwd.setText(m2.getInt("forward").toString())
-                        etM2Bwd.setText(m2.getInt("backward").toString())
-                        etM2En.setText(m2.getInt("enable").toString())
-
-                        etSTrig.setText(s.getInt("trigger").toString())
-                        etSEcho.setText(s.getInt("echo").toString())
+                    if (json.has("devices")) {
+                        llDeviceContainer.removeAllViews()
+                        val devices = json.getJSONArray("devices")
+                        for (i in 0 until devices.length()) {
+                            addDeviceToUI(devices.getJSONObject(i))
+                        }
+                    } else if (json.optString("status") == "success" && json.has("results")) {
+                        // Scan result
+                        val results = json.getJSONArray("results")
+                        if (results.length() > 0) {
+                            val first = results.getJSONObject(0)
+                            currentScanningCard?.let { card ->
+                                card.findViewById<EditText>(R.id.etPinTrig).setText(first.getInt("trigger").toString())
+                                card.findViewById<EditText>(R.id.etPinEcho).setText(first.getInt("echo").toString())
+                                Toast.makeText(this, "Scan complete!", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(this, "No sensors found", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                } catch (e: Exception) {
-                    // Might be another data packet
-                }
+                } catch (e: Exception) {}
             }
         }
     }
 
-    private fun scanSensor() {
-        Toast.makeText(this, "Scanning...", Toast.LENGTH_SHORT).show()
-        BluetoothManager.sendCommand("SCAN_CONFIG")
+    private fun addDeviceToUI(dev: JSONObject) {
+        val inflater = LayoutInflater.from(this)
+        val card = inflater.inflate(R.layout.item_device_config, llDeviceContainer, false)
+        
+        val etName = card.findViewById<EditText>(R.id.etDeviceName)
+        val btnDelete = card.findViewById<ImageButton>(R.id.btnDeleteDevice)
+        val pinsContainer = card.findViewById<LinearLayout>(R.id.llPinsContainer)
+        val tvRole = card.findViewById<TextView>(R.id.tvRole)
+
+        val id = dev.optString("id")
+        val type = dev.optString("type")
+        val name = dev.optString("name")
+        val role = dev.optString("role")
+        val pins = dev.optJSONObject("pins") ?: JSONObject()
+
+        etName.setText(name)
+        card.tag = dev // Store full metadata
+
+        if (role.isNotEmpty()) {
+            tvRole.text = "Role: $role"
+            tvRole.visibility = View.VISIBLE
+        }
+
+        if (type == "motor") {
+            val pinsView = inflater.inflate(R.layout.item_pins_motor, pinsContainer, true)
+            pinsView.findViewById<EditText>(R.id.etPinFwd).setText(pins.optInt("forward").toString())
+            pinsView.findViewById<EditText>(R.id.etPinBwd).setText(pins.optInt("backward").toString())
+            pinsView.findViewById<EditText>(R.id.etPinSpd).setText(pins.optInt("enable").toString())
+        } else if (type == "hcsr04") {
+            val pinsView = inflater.inflate(R.layout.item_pins_hcsr04, pinsContainer, true)
+            pinsView.findViewById<EditText>(R.id.etPinTrig).setText(pins.optInt("trigger").toString())
+            pinsView.findViewById<EditText>(R.id.etPinEcho).setText(pins.optInt("echo").toString())
+            
+            pinsView.findViewById<Button>(R.id.btnScanSensor).setOnClickListener {
+                currentScanningCard = card
+                BluetoothManager.sendCommand("SCAN_CONFIG")
+                Toast.makeText(this, "Scanning...", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnDelete.setOnClickListener { llDeviceContainer.removeView(card) }
+        llDeviceContainer.addView(card)
+    }
+
+    private fun showAddDeviceDialog() {
+        val options = arrayOf("New Motor", "New HC-SR04 Sensor")
+        AlertDialog.Builder(this)
+            .setTitle("Add Peripheral")
+            .setItems(options) { _, which ->
+                val type = if (which == 0) "motor" else "hcsr04"
+                val dev = JSONObject()
+                dev.put("id", "dev_" + System.currentTimeMillis() % 10000)
+                dev.put("type", type)
+                dev.put("name", if (which == 0) "New Motor" else "New Sensor")
+                dev.put("pins", JSONObject())
+                addDeviceToUI(dev)
+            }
+            .show()
     }
 
     private fun saveConfig() {
         try {
+            val devicesArr = JSONArray()
+            for (i in 0 until llDeviceContainer.childCount) {
+                val card = llDeviceContainer.getChildAt(i)
+                val meta = card.tag as JSONObject
+                
+                val devJson = JSONObject()
+                devJson.put("id", meta.getString("id"))
+                devJson.put("type", meta.getString("type"))
+                devJson.put("name", card.findViewById<EditText>(R.id.etDeviceName).text.toString())
+                if (meta.has("role")) devJson.put("role", meta.getString("role"))
+
+                val pins = JSONObject()
+                if (devJson.getString("type") == "motor") {
+                    val pContainer = card.findViewById<ViewGroup>(R.id.llPinsContainer)
+                    pins.put("forward", pContainer.findViewById<EditText>(R.id.etPinFwd).text.toString().toInt())
+                    pins.put("backward", pContainer.findViewById<EditText>(R.id.etPinBwd).text.toString().toInt())
+                    pins.put("enable", pContainer.findViewById<EditText>(R.id.etPinSpd).text.toString().toInt())
+                } else if (devJson.getString("type") == "hcsr04") {
+                    val pContainer = card.findViewById<ViewGroup>(R.id.llPinsContainer)
+                    pins.put("trigger", pContainer.findViewById<EditText>(R.id.etPinTrig).text.toString().toInt())
+                    pins.put("echo", pContainer.findViewById<EditText>(R.id.etPinEcho).text.toString().toInt())
+                }
+                devJson.put("pins", pins)
+                devicesArr.put(devJson)
+            }
+
             val config = JSONObject()
-            val motors = JSONObject()
-            val m1 = JSONObject()
-            m1.put("forward", etM1Fwd.text.toString().toInt())
-            m1.put("backward", etM1Bwd.text.toString().toInt())
-            m1.put("enable", etM1En.text.toString().toInt())
-            
-            val m2 = JSONObject()
-            m2.put("forward", etM2Fwd.text.toString().toInt())
-            m2.put("backward", etM2Bwd.text.toString().toInt())
-            m2.put("enable", etM2En.text.toString().toInt())
-            
-            motors.put("left", m1)
-            motors.put("right", m2)
-            
-            val s = JSONObject()
-            s.put("trigger", etSTrig.text.toString().toInt())
-            s.put("echo", etSEcho.text.toString().toInt())
-            
-            config.put("motors", motors)
-            config.put("sensor", s)
+            config.put("devices", devicesArr)
 
             BluetoothManager.sendCommand("SAVE_CONFIG:${config.toString()}")
             Toast.makeText(this, R.string.msg_config_saved, Toast.LENGTH_SHORT).show()

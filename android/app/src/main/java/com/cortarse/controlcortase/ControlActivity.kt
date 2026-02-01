@@ -90,7 +90,7 @@ class ControlActivity : AppCompatActivity() {
                     // Try to parse as config for dynamic pins
                     try {
                         val json = JSONObject(data)
-                        if (json.has("motors")) {
+                        if (json.has("devices")) {
                             updatePinLabels(json)
                         }
                     } catch (e: Exception) {}
@@ -228,17 +228,25 @@ class ControlActivity : AppCompatActivity() {
 
     private fun updatePinLabels(json: JSONObject) {
         try {
-            val motors = json.getJSONObject("motors")
-            val m1 = motors.getJSONObject("left")
-            val m2 = motors.getJSONObject("right")
+            val devices = json.getJSONArray("devices")
+            for (i in 0 until devices.length()) {
+                val dev = devices.getJSONObject(i)
+                val type = dev.optString("type")
+                val role = dev.optString("role")
+                val pins = dev.optJSONObject("pins") ?: continue
 
-            tvM1Fwd.text = m1.getInt("forward").toString()
-            tvM1Bwd.text = m1.getInt("backward").toString()
-            tvM1En.text = m1.getInt("enable").toString()
-
-            tvM2Fwd.text = m2.getInt("forward").toString()
-            tvM2Bwd.text = m2.getInt("backward").toString()
-            tvM2En.text = m2.getInt("enable").toString()
+                if (type == "motor") {
+                    if (role == "move_left") {
+                        tvM1Fwd.text = pins.optInt("forward").toString()
+                        tvM1Bwd.text = pins.optInt("backward").toString()
+                        tvM1En.text = pins.optInt("enable").toString()
+                    } else if (role == "move_right") {
+                        tvM2Fwd.text = pins.optInt("forward").toString()
+                        tvM2Bwd.text = pins.optInt("backward").toString()
+                        tvM2En.text = pins.optInt("enable").toString()
+                    }
+                }
+            }
         } catch (e: Exception) {}
     }
 

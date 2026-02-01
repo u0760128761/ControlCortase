@@ -7,21 +7,39 @@ from flask import Flask, render_template_string, request, redirect, url_for, Res
 from gpiozero import Motor, DistanceSensor
 import json
 
-# --- Configuration Persistence ---
+# --- Catalog & Configuration ---
+CATALOG = {
+    "motor": {"default_name": "Motor", "pins": ["forward", "backward", "enable"]},
+    "hcsr04": {"default_name": "HC-SR04 Sensor", "pins": ["trigger", "echo"]}
+}
+
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
-    "motors": {
-        "left": {"forward": 17, "backward": 18, "enable": 23},
-        "right": {"forward": 27, "backward": 22, "enable": 24}
-    },
-    "sensor": {"trigger": 20, "echo": 21} # Default placeholder pins
+    "devices": [
+        {"id": "m1", "type": "motor", "name": "Left Motor", "pins": {"forward": 17, "backward": 18, "enable": 23}, "role": "move_left"},
+        {"id": "m2", "type": "motor", "name": "Right Motor", "pins": {"forward": 27, "backward": 22, "enable": 24}, "role": "move_right"},
+        {"id": "s1", "type": "hcsr04", "name": "HC-SR04 Sensor", "pins": {"trigger": 20, "echo": 21}}
+    ]
 }
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
+                config = json.load(f)
+                # Migration: old format had "motors" and "sensor"
+                if "devices" not in config:
+                    print("Migrating legacy config...")
+                    new_devices = []
+                    if "motors" in config:
+                        m = config["motors"]
+                        new_devices.append({"id": "m1", "type": "motor", "name": "Left Motor", "pins": m["left"], "role": "move_left"})
+                        new_devices.append({"id": "m2", "type": "motor", "name": "Right Motor", "pins": m["right"], "role": "move_right"})
+                    if "sensor" in config:
+                        new_devices.append({"id": "s1", "type": "hcsr04", "name": "HC-SR04 Sensor", "pins": config["sensor"]})
+                    config = {"devices": new_devices}
+                    save_config(config)
+                return config
         except Exception as e:
             print(f"Error loading config: {e}")
     return DEFAULT_CONFIG
@@ -33,36 +51,37 @@ def save_config(config):
     except Exception as e:
         print(f"Error saving config: {e}")
 
-# --- Motor & Sensor Initialization ---
+# --- Peripheral Registry ---
 current_config = load_config()
-left_motor = None
-right_motor = None
-distance_sensor = None
+peripherals = {} # Map ID or Role to gpiozero object
 
 def init_peripherals():
-    global left_motor, right_motor, distance_sensor, current_config
+    global peripherals, current_config
     
-    # Clean up existing objects if any
-    if left_motor: left_motor.close()
-    if right_motor: right_motor.close()
-    if distance_sensor: distance_sensor.close()
+    # Clean up
+    for p in peripherals.values():
+        try: p.close()
+        except: pass
+    peripherals = {}
 
-    m = current_config["motors"]
-    s = current_config["sensor"]
-    
-    try:
-        left_motor = Motor(forward=m["left"]["forward"], backward=m["left"]["backward"], enable=m["left"]["enable"])
-        right_motor = Motor(forward=m["right"]["forward"], backward=m["right"]["backward"], enable=m["right"]["enable"])
-        print(f"Motors initialized: L({m['left']}), R({m['right']})")
-    except Exception as e:
-        print(f"Error initializing motors: {e}")
-
-    try:
-        if s.get("trigger") and s.get("echo"):
-            distance_sensor = DistanceSensor(trigger=s["trigger"], echo=s["echo"])
-            print(f"Sensor initialized: Trigger={s['trigger']}, Echo={s['echo']}")
-    except Exception as e:
-        print(f"Error initializing sensor: {e}")
+    for dev in current_config.get("devices", []):
+        try:
+            dtype = dev.get("type")
+            pins = dev.get("pins", {})
+            p_obj = None
+            
+            if dtype == "motor":
+                p_obj = Motor(forward=pins["forward"], backward=pins["backward"], enable=pins["enable"])
+            elif dtype == "hcsr04":
+                p_obj = DistanceSensor(trigger=pins["trigger"], echo=pins["echo"])
+            
+            if p_obj:
+                peripherals[dev["id"]] = p_obj
+                if dev.get("role"):
+                    peripherals[dev["role"]] = p_obj
+                print(f"Peripheral initialized: {dev['name']} ({dev['id']})")
+        except Exception as e:
+            print(f"Error initializing device {dev.get('name')}: {e}")
 
 init_peripherals()
 
@@ -396,13 +415,45 @@ HTML_TEMPLATE = """
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .config-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
-        .config-card { background: white; border-radius: 15px; padding: 15px; box-shadow: var(--shadow); }
-        .config-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .config-label { font-weight: 600; font-size: 0.9rem; }
-        .config-input { width: 60px; padding: 5px; border: 1px solid #ddd; border-radius: 5px; text-align: center; }
-        .btn-scan { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
-        .btn-save { background: var(--success); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
         .scan-result { margin-top: 15px; padding: 10px; background: #e0f2f1; border-radius: 10px; font-size: 0.85rem; display: none; }
+        
+        /* Dynamic Config Cards */
+        .config-card { background: white; border-radius: 15px; padding: 15px; box-shadow: var(--shadow); position: relative; }
+        .config-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .config-card-title { margin: 0; font-size: 1rem; flex: 1; }
+        .config-name-input { border: none; font-weight: bold; font-size: 1rem; width: 100%; color: var(--text-main); }
+        .config-name-input:focus { outline: none; border-bottom: 1px solid var(--primary); }
+        .btn-delete { color: var(--danger); cursor: pointer; font-size: 1.2rem; opacity: 0.6; transition: 0.2s; }
+        .btn-delete:hover { opacity: 1; }
+        
+        .add-device-section { margin-top: 30px; padding: 20px; border: 2px dashed #ccc; border-radius: 15px; text-align: center; }
+        .catalog-select { padding: 10px; border-radius: 10px; border: 1px solid #ddd; margin-right: 10px; width: 200px; }
+        .btn-add { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        
+        /* Integrated Terminal */
+        .terminal-integrated {
+            margin-top: 20px;
+            background: #000;
+            color: #00ff00;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.8rem;
+            padding: 10px;
+            border-radius: 10px;
+            height: 150px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border: 1px solid #333;
+            box-shadow: inset 0 0 10px rgba(0,255,0,0.1);
+        }
+        .terminal-header {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            color: rgba(0,255,0,0.5);
+            display: flex;
+            justify-content: space-between;
+        }
         
         /* Admin Dropdown */
         .admin-dropdown { position: relative; display: inline-block; cursor: pointer; }
@@ -410,13 +461,24 @@ HTML_TEMPLATE = """
             display: none;
             position: absolute;
             right: 0;
+            top: 100%;
             background-color: white;
             min-width: 160px;
             box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
             z-index: 1000;
             border-radius: 10px;
             overflow: hidden;
-            margin-top: 10px;
+            padding-top: 5px; /* Visual gap padding */
+        }
+        /* Hover Bridge to prevent premature closing */
+        .admin-dropdown::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: -15px;
+            height: 15px;
+            z-index: 999;
         }
         .dropdown-content a {
             color: black;
@@ -517,58 +579,76 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
             </div>
+            <div class="terminal-integrated">
+                <div class="terminal-header">
+                    <span>Terminal / Control</span>
+                    <span id="term-status-control">● Live</span>
+                </div>
+                <div id="term-control"></div>
+            </div>
         </div>
 
         <!-- Configuration Tab -->
         <div id="config" class="tab-content">
-            <div class="config-grid">
-                <div class="config-card">
-                    <h3 style="margin-top:0" data-t="m_left">Левый мотор</h3>
+            <div class="config-grid" id="configGrid">
+                {% for dev in config.devices %}
+                <div class="config-card" data-id="{{ dev.id }}" data-type="{{ dev.type }}">
+                    <div class="config-card-header">
+                        <input type="text" class="config-name-input" value="{{ dev.name }}" onchange="markDirty()">
+                        <span class="btn-delete" onclick="deleteDevice('{{ dev.id }}')">&times;</span>
+                    </div>
+                    
+                    {% if dev.type == 'motor' %}
                     <div class="config-row">
                         <span class="config-label" data-t="pin_fwd">Вперед</span>
-                        <input type="number" class="config-input" id="cfg_m1_fwd" value="{{ config.motors.left.forward }}">
+                        <input type="number" class="config-input" data-pin="forward" value="{{ dev.pins.forward }}">
                     </div>
                     <div class="config-row">
                         <span class="config-label" data-t="pin_bwd">Назад</span>
-                        <input type="number" class="config-input" id="cfg_m1_bwd" value="{{ config.motors.left.backward }}">
+                        <input type="number" class="config-input" data-pin="backward" value="{{ dev.pins.backward }}">
                     </div>
                     <div class="config-row">
                         <span class="config-label" data-t="pin_spd">Скорость</span>
-                        <input type="number" class="config-input" id="cfg_m1_en" value="{{ config.motors.left.enable }}">
+                        <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable }}">
                     </div>
-                </div>
-
-                <div class="config-card">
-                    <h3 style="margin-top:0" data-t="m_right">Правый мотор</h3>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_fwd">Вперед</span>
-                        <input type="number" class="config-input" id="cfg_m2_fwd" value="{{ config.motors.right.forward }}">
-                    </div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_bwd">Назад</span>
-                        <input type="number" class="config-input" id="cfg_m2_bwd" value="{{ config.motors.right.backward }}">
-                    </div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_spd">Скорость</span>
-                        <input type="number" class="config-input" id="cfg_m2_en" value="{{ config.motors.right.enable }}">
-                    </div>
-                </div>
-
-                <div class="config-card">
-                    <h3 style="margin-top:0" data-t="tab_config_sensor">Датчик HC-SR04</h3>
+                    {% elif dev.type == 'hcsr04' %}
                     <div class="config-row">
                         <span class="config-label">Trigger</span>
-                        <input type="number" class="config-input" id="cfg_s_trig" value="{{ config.sensor.trigger }}">
+                        <input type="number" class="config-input" data-pin="trigger" value="{{ dev.pins.trigger }}">
                     </div>
                     <div class="config-row">
                         <span class="config-label">Echo</span>
-                        <input type="number" class="config-input" id="cfg_s_echo" value="{{ config.sensor.echo }}">
+                        <input type="number" class="config-input" data-pin="echo" value="{{ dev.pins.echo }}">
                     </div>
-                    <button class="btn-scan" onclick="scanHCSR04()" data-t="btn_scan">Сканировать HC-SR04</button>
-                    <div id="scanResult" class="scan-result"></div>
-                </div>
+                    <button class="btn-scan" onclick="scanHCSR04('{{ dev.id }}')" data-t="btn_scan">Сканировать HC-SR04</button>
+                    <div id="scanResult_{{ dev.id }}" class="scan-result"></div>
+                    {% endif %}
 
-                <button class="btn-save" onclick="saveConfig()" data-t="btn_save">Сохранить и Применить</button>
+                    {% if dev.role %}
+                    <div style="margin-top: 10px; font-size: 0.7rem; color: var(--text-sub);">
+                        Role: <strong>{{ dev.role }}</strong>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="add-device-section">
+                <select id="catalogSelect" class="catalog-select">
+                    <option value="motor">New Motor</option>
+                    <option value="hcsr04">New HC-SR04 Sensor</option>
+                </select>
+                <button class="btn-add" onclick="addDevice()">+ Add Device</button>
+            </div>
+
+            <button class="btn-save" onclick="saveConfig()" data-t="btn_save" style="margin-top: 20px;">Сохранить и Применить</button>
+
+            <div class="terminal-integrated">
+                <div class="terminal-header">
+                    <span>Terminal / Configuration</span>
+                    <span id="term-status-config">● Live</span>
+                </div>
+                <div id="term-config"></div>
             </div>
         </div>
 
@@ -737,28 +817,50 @@ HTML_TEMPLATE = """
 
         let eventSource = null;
         function startUpdate() {
-            const terminal = document.getElementById('terminalBody');
-            terminal.innerHTML = "";
+            const terminalModal = document.getElementById('terminalBody');
+            terminalModal.innerHTML = "";
             document.getElementById('terminalModal').style.display = 'flex';
             
             fetch('/update', { method: 'POST' })
                 .then(r => {
-                    if (r.ok) {
-                        if (eventSource) eventSource.close();
-                        eventSource = new EventSource('/stream_logs');
-                        eventSource.onmessage = (e) => {
-                            terminal.innerText += e.data;
-                            terminal.scrollTop = terminal.scrollHeight;
-                            if (e.data.includes("DONE")) {
-                                eventSource.close();
-                            }
-                        };
-                    } else {
-                        const lang = localStorage.getItem('appLang') || 'ru';
-                        alert(translations[lang].error_update);
+                    if (!r.ok) console.error("Error starting update");
+                })
+                .catch(e => console.error('Error:', e));
+        }
+
+        function initLogStream() {
+            const terms = [
+                document.getElementById('term-control'),
+                document.getElementById('term-config'),
+                document.getElementById('terminalBody')
+            ];
+
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource('/stream_logs');
+            
+            eventSource.onmessage = (e) => {
+                terms.forEach(term => {
+                    if (term) {
+                        term.innerText += e.data;
+                        term.scrollTop = term.scrollHeight;
                     }
                 });
+            };
+
+            eventSource.onerror = (e) => {
+                console.warn("Log stream disconnected, retrying...");
+                eventSource.close();
+                setTimeout(initLogStream, 3000);
+            };
         }
+
+        // Initialize log stream on load
+        window.addEventListener('load', () => {
+            applyTranslations();
+            const activeTab = localStorage.getItem('activeTab') || 'control';
+            showTab(activeTab);
+            initLogStream();
+        });
 
         function closeTerminal() {
             document.getElementById('terminalModal').style.display = 'none';
@@ -800,55 +902,94 @@ HTML_TEMPLATE = """
             startRefresh(parseInt(val));
         }
 
-        function scanHCSR04() {
-            const btn = document.querySelector('.btn-scan');
-            const res = document.getElementById('scanResult');
-            const lang = localStorage.getItem('appLang') || 'ru';
+        function addDevice() {
+            const type = document.getElementById('catalogSelect').value;
+            const id = "dev_" + Math.random().toString(36).substr(2, 5);
+            const name = type === 'motor' ? 'New Motor' : 'New Sensor';
             
-            btn.disabled = true;
-            res.style.display = 'block';
-            res.textContent = translations[lang].scanning;
+            const grid = document.getElementById('configGrid');
+            const card = document.createElement('div');
+            card.className = "config-card";
+            card.dataset.id = id;
+            card.dataset.type = type;
+
+            let pinsHtml = "";
+            if (type === 'motor') {
+                pinsHtml = `
+                    <div class="config-row"><span class="config-label">Fwd</span><input type="number" class="config-input" data-pin="forward" value="0"></div>
+                    <div class="config-row"><span class="config-label">Bwd</span><input type="number" class="config-input" data-pin="backward" value="0"></div>
+                    <div class="config-row"><span class="config-label">Spd</span><input type="number" class="config-input" data-pin="enable" value="0"></div>
+                `;
+            } else {
+                pinsHtml = `
+                    <div class="config-row"><span class="config-label">Trig</span><input type="number" class="config-input" data-pin="trigger" value="0"></div>
+                    <div class="config-row"><span class="config-label">Echo</span><input type="number" class="config-input" data-pin="echo" value="0"></div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div class="config-card-header">
+                    <input type="text" class="config-name-input" value="${name}">
+                    <span class="btn-delete" onclick="deleteDevice('${id}')">&times;</span>
+                </div>
+                ${pinsHtml}
+            `;
+            grid.appendChild(card);
+        }
+
+        function deleteDevice(id) {
+            const card = document.querySelector(`.config-card[data-id="${id}"]`);
+            if (card) card.remove();
+        }
+
+        function markDirty() { /* Visual feedback for unsaved changes could go here */ }
+
+        function scanHCSR04(id) {
+            const res = document.getElementById('scanResult_' + id);
+            const lang = localStorage.getItem('appLang') || 'ru';
+            if (res) {
+                res.style.display = 'block';
+                res.textContent = translations[lang].scanning;
+            }
 
             fetch('/config/scan', { method: 'POST' })
                 .then(r => r.json())
                 .then(data => {
                     if (data.status === 'success' && data.results.length > 0) {
-                        res.innerHTML = "<strong>Найдены устройства:</strong><br>" + 
-                            data.results.map(r => `Trigger: ${r.trigger}, Echo: ${r.echo}`).join('<br>');
-                        // Suggest first result
-                        document.getElementById('cfg_s_trig').value = data.results[0].trigger;
-                        document.getElementById('cfg_s_echo').value = data.results[0].echo;
+                        const card = document.querySelector(`.config-card[data-id="${id}"]`);
+                        card.querySelector('[data-pin="trigger"]').value = data.results[0].trigger;
+                        card.querySelector('[data-pin="echo"]').value = data.results[0].echo;
+                        if (res) res.textContent = "Done!";
                     } else {
-                        res.textContent = translations[lang].scan_not_found;
+                        if (res) res.textContent = translations[lang].scan_not_found;
                     }
-                })
-                .finally(() => btn.disabled = false);
+                });
         }
 
         function saveConfig() {
-            const config = {
-                motors: {
-                    left: {
-                        forward: parseInt(document.getElementById('cfg_m1_fwd').value),
-                        backward: parseInt(document.getElementById('cfg_m1_bwd').value),
-                        enable: parseInt(document.getElementById('cfg_m1_en').value)
-                    },
-                    right: {
-                        forward: parseInt(document.getElementById('cfg_m2_fwd').value),
-                        backward: parseInt(document.getElementById('cfg_m2_bwd').value),
-                        enable: parseInt(document.getElementById('cfg_m2_en').value)
-                    }
-                },
-                sensor: {
-                    trigger: parseInt(document.getElementById('cfg_s_trig').value),
-                    echo: parseInt(document.getElementById('cfg_s_echo').value)
-                }
-            };
+            const devices = [];
+            document.querySelectorAll('.config-card').forEach(card => {
+                const dev = {
+                    id: card.dataset.id,
+                    type: card.dataset.type,
+                    name: card.querySelector('.config-name-input').value,
+                    pins: {}
+                };
+                card.querySelectorAll('.config-input').forEach(input => {
+                    dev.pins[input.dataset.pin] = parseInt(input.value);
+                });
+                
+                // Preserve roles if they exist
+                const roleEl = card.querySelector('strong');
+                if (roleEl) dev.role = roleEl.textContent;
+
+                devices.push(dev);
+            });
 
             fetch('/config/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(config)
+                body: JSON.stringify({ devices: devices })
             })
             .then(r => r.json())
             .then(data => {
@@ -1023,8 +1164,14 @@ def map_speed(val255):
     return max(0.0, min(1.0, val255 / 255.0))
 
 def set_motor(motor_id, direction):
-    motor = left_motor if motor_id == 1 else right_motor
+    # motor_id 1 = move_left, motor_id 2 = move_right (legacy support)
+    role = "move_left" if motor_id == 1 else "move_right"
+    motor = peripherals.get(role)
     
+    if not motor:
+        print(f"No motor with role {role} found")
+        return
+
     if direction == "FORWARD":
         motor.forward(current_speed)
     elif direction == "BACKWARD":
@@ -1114,11 +1261,10 @@ def server_loop():
                         try:
                             val = int(cmd_str.split(":")[1])
                             current_speed = map_speed(val)
-                            # Re-apply current speed to motors if they are moving
-                            if left_motor.is_active:
-                                left_motor.value = (left_motor.value / abs(left_motor.value)) * current_speed if left_motor.value != 0 else 0
-                            if right_motor.is_active:
-                                right_motor.value = (right_motor.value / abs(right_motor.value)) * current_speed if right_motor.value != 0 else 0
+                            # Re-apply current speed to active motors
+                            for p in peripherals.values():
+                                if isinstance(p, Motor) and p.is_active:
+                                    p.value = (p.value / abs(p.value)) * current_speed if p.value != 0 else 0
                             print(f"Speed set to {current_speed*100}%")
                         except ValueError:
                             print("Invalid Speed Value")
