@@ -16,6 +16,7 @@ class ConfigActivity : AppCompatActivity() {
     private lateinit var llDeviceContainer: LinearLayout
     private lateinit var btnAddDevice: Button
     private lateinit var btnSaveConfig: Button
+    private lateinit var btnRefreshConfig: Button
     
     private var currentScanningCard: View? = null
 
@@ -32,9 +33,11 @@ class ConfigActivity : AppCompatActivity() {
         llDeviceContainer = findViewById(R.id.llDeviceContainer)
         btnAddDevice = findViewById(R.id.btnAddDevice)
         btnSaveConfig = findViewById(R.id.btnSaveConfig)
+        btnRefreshConfig = findViewById(R.id.btnRefreshConfig)
 
         btnAddDevice.setOnClickListener { showAddDeviceDialog() }
         btnSaveConfig.setOnClickListener { saveConfig() }
+        btnRefreshConfig.setOnClickListener { fetchCurrentConfig() }
     }
 
     private fun setupHeader() {

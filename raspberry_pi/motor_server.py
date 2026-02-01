@@ -8,17 +8,40 @@ from gpiozero import Motor, DistanceSensor
 import json
 
 # --- Global Logging ---
-log_queue = queue.Queue(maxsize=100)
+class LogManager:
+    def __init__(self):
+        self.listeners = []
+        self.lock = threading.Lock()
+
+    def add_listener(self):
+        q = queue.Queue(maxsize=100)
+        with self.lock:
+            self.listeners.append(q)
+        return q
+
+    def remove_listener(self, q):
+        with self.lock:
+            if q in self.listeners:
+                self.listeners.remove(q)
+
+    def broadcast(self, msg):
+        msg_line = f"{msg}\n"
+        print(msg) # Still print to console
+        with self.lock:
+            for q in self.listeners:
+                try:
+                    q.put(msg_line, block=False)
+                except queue.Full:
+                    try: 
+                        q.get_nowait()
+                        q.put(msg_line)
+                    except: pass
+
+log_manager = LogManager()
 is_updating = False
 
 def log_msg(msg):
-    # Print to console and add to log_queue for web terminal
-    print(msg)
-    try:
-        log_queue.put(f"{msg}\n", block=False)
-    except queue.Full:
-        log_queue.get()
-        log_queue.put(f"{msg}\n")
+    log_manager.broadcast(msg)
 
 # --- Catalog & Configuration ---
 CATALOG = {
@@ -1163,17 +1186,14 @@ def update():
         global is_updating
         is_updating = True
         try:
-            # Clear old logs
-            while not log_queue.empty(): log_queue.get()
-            
             process = subprocess.Popen(["./deploy.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=False)
             for line in process.stdout:
-                log_queue.put(line)
+                log_msg(line.strip())
             process.wait()
-            log_queue.put("DONE\n")
+            log_msg("DONE")
         except Exception as e:
-            log_queue.put(f"ERROR: {e}\n")
-            log_queue.put("DONE\n")
+            log_msg(f"ERROR: {e}")
+            log_msg("DONE")
         finally:
             is_updating = False
 
@@ -1183,11 +1203,16 @@ def update():
 @app.route('/stream_logs')
 def stream_logs():
     def generate():
-        while True:
-            line = log_queue.get()
-            yield f"data: {line}\n\n"
-            if line == "DONE\n":
-                break
+        q = log_manager.add_listener()
+        try:
+            while True:
+                try:
+                    line = q.get(timeout=20)
+                    yield f"data: {line}\n\n"
+                except queue.Empty:
+                    yield "data: HEARTBEAT\n\n"
+        finally:
+            log_manager.remove_listener(q)
     return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/restart', methods=['POST'])
@@ -1231,33 +1256,30 @@ def process_update_bt(sock):
     global is_updating
     is_updating = True
     try:
-        # Clear old logs
-        while not log_queue.empty(): log_queue.get()
-        
         process = subprocess.Popen(["./deploy.sh"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=False)
         for line in process.stdout:
-            log_queue.put(line)
+            log_msg(line.strip())
             try:
-                sock.send(line.encode())
+                sock.send((line.strip() + "\n").encode())
             except:
                 pass # Client might have closed
         process.wait()
-        log_queue.put("DONE\n")
+        log_msg("DONE")
         try: sock.send("DONE\n".encode())
         except: pass
     except Exception as e:
-        err = f"ERROR: {e}\n"
-        log_queue.put(err)
-        try: sock.send(err.encode())
+        err = f"ERROR: {e}"
+        log_msg(err)
+        try: sock.send((err + "\n").encode())
         except: pass
-        log_queue.put("DONE\n")
+        log_msg("DONE")
         try: sock.send("DONE\n".encode())
         except: pass
     finally:
         is_updating = False
 
 def server_loop():
-    global BT_STATUS, BT_CLIENT_INFO, BT_DEVICE_NAME
+    global BT_STATUS, BT_CLIENT_INFO, BT_DEVICE_NAME, current_config
 
     # Use standard socket instead of PyBluez
     server_sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
@@ -1299,13 +1321,14 @@ def server_loop():
                     try:
                         cmd_str = data.decode("utf-8").strip()
                     except:
-                        print("Decode error")
+                        log_msg("Decode error")
                         continue
                         
-                    print("Received:", cmd_str)
+                    log_msg(f"Received from BT: {cmd_str}")
                     
                     # Protocol Handling
                     if cmd_str.startswith("SPEED:"):
+                        global current_speed
                         try:
                             val = int(cmd_str.split(":")[1])
                             current_speed = map_speed(val)
@@ -1313,9 +1336,9 @@ def server_loop():
                             for p in peripherals.values():
                                 if isinstance(p, Motor) and p.is_active:
                                     p.value = (p.value / abs(p.value)) * current_speed if p.value != 0 else 0
-                            print(f"Speed set to {current_speed*100}%")
+                            log_msg(f"Speed set to {current_speed*100}%")
                         except ValueError:
-                            print("Invalid Speed Value")
+                            log_msg("Invalid Speed Value")
                     elif cmd_str == "UPDATE":
                         log_msg("Update requested via BT")
                         if not is_updating:
@@ -1370,13 +1393,13 @@ def server_loop():
                         process_movement_cmd(cmd_str)
                     
             except IOError:
-                print("Connection disconnected")
+                log_msg("Connection disconnected")
                 BT_STATUS = "Disconnected"
                 BT_CLIENT_INFO = None
                 BT_DEVICE_NAME = None
             
             client_sock.close()
-            print("Client closed. Waiting for new connection...")
+            log_msg("Client closed. Waiting for new connection...")
             # Stop motors on disconnect for safety
             set_motor(1, "STOP")
             set_motor(2, "STOP")
