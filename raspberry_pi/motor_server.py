@@ -79,9 +79,9 @@ def init_peripherals():
                 peripherals[dev["id"]] = p_obj
                 if dev.get("role"):
                     peripherals[dev["role"]] = p_obj
-                print(f"Peripheral initialized: {dev['name']} ({dev['id']})")
+                log_msg(f"Peripheral initialized: {dev['name']} ({dev['id']})")
         except Exception as e:
-            print(f"Error initializing device {dev.get('name')}: {e}")
+            log_msg(f"Error initializing device {dev.get('name')}: {e}")
 
 init_peripherals()
 
@@ -95,6 +95,15 @@ BT_DEVICE_NAME = None
 # --- Maintenance State ---
 log_queue = queue.Queue(maxsize=100)
 is_updating = False
+
+def log_msg(msg):
+    # Print to console and add to log_queue for web terminal
+    print(msg)
+    try:
+        log_queue.put(f"{msg}\n", block=False)
+    except queue.Full:
+        log_queue.get()
+        log_queue.put(f"{msg}\n")
 
 def get_bt_device_name(mac):
     try:
@@ -1121,7 +1130,7 @@ def move(direction):
     return "OK", 200
 
 def process_movement_cmd(cmd):
-    print(f"Executing: {cmd}")
+    log_msg(f"Executing: {cmd}")
     if cmd == "FORWARD":
         set_motor(1, "FORWARD")
         set_motor(2, "FORWARD")
@@ -1208,7 +1217,7 @@ def set_motor(motor_id, direction):
     motor = peripherals.get(role)
     
     if not motor:
-        print(f"No motor with role {role} found")
+        log_msg(f"No motor with role {role} found")
         return
 
     if direction == "FORWARD":
@@ -1275,7 +1284,7 @@ def server_loop():
     while True:
         try:
             client_sock, client_info = server_sock.accept()
-            print("Accepted connection from", client_info)
+            log_msg(f"Accepted connection from {client_info}")
             BT_STATUS = "Connected"
             mac = client_info[0]
             BT_CLIENT_INFO = mac
@@ -1308,17 +1317,19 @@ def server_loop():
                         except ValueError:
                             print("Invalid Speed Value")
                     elif cmd_str == "UPDATE":
-                        print("Update requested via BT")
+                        log_msg("Update requested via BT")
                         if not is_updating:
                             threading.Thread(target=process_update_bt, args=(client_sock,), daemon=True).start()
                         else:
                             client_sock.send("Update already in progress\n".encode())
                         threading.Thread(target=do_reboot_bt, daemon=True).start()
                     elif cmd_str == "GET_CONFIG":
-                        print("Config requested via BT")
-                        client_sock.send((json.dumps(current_config) + "\n").encode())
+                        log_msg(f"Config requested via BT from {BT_CLIENT_INFO}")
+                        cfg_str = json.dumps(current_config)
+                        log_msg(f"Sending config (len={len(cfg_str)})")
+                        client_sock.send((cfg_str + "\n").encode())
                     elif cmd_str.startswith("SAVE_CONFIG:"):
-                        print("Config save requested via BT")
+                        log_msg("Config save requested via BT")
                         try:
                             config_json = cmd_str.split("SAVE_CONFIG:")[1]
                             new_config = json.loads(config_json)
@@ -1326,10 +1337,11 @@ def server_loop():
                             current_config = new_config
                             init_peripherals()
                             client_sock.send("CONFIG_SAVED\n".encode())
+                            log_msg("Config saved and peripherals re-initialized")
                         except Exception as e:
                             client_sock.send(f"ERROR_SAVING_CONFIG:{e}\n".encode())
                     elif cmd_str == "SCAN_CONFIG":
-                        print("Scan requested via BT")
+                        log_msg("Scan requested via BT")
                         # We recycle the scan logic from api_scan_sensor
                         import time
                         from gpiozero import DigitalOutputDevice, DigitalInputDevice

@@ -54,13 +54,27 @@ object BluetoothManager {
     private fun startReading() {
         readThread?.interrupt()
         readThread = Thread {
-            val buffer = ByteArray(1024)
+            val buffer = ByteArray(2048)
+            val lineBuffer = StringBuilder()
+            
             while (!Thread.currentThread().isInterrupted && socket?.isConnected == true) {
                 try {
                     val bytes = inputStream?.read(buffer) ?: -1
                     if (bytes > 0) {
-                        val message = String(buffer, 0, bytes)
-                        onDataReceived?.invoke(message)
+                        val chunk = String(buffer, 0, bytes)
+                        lineBuffer.append(chunk)
+                        
+                        // Process all complete lines in the buffer
+                        var newlineIndex = lineBuffer.indexOf("\n")
+                        while (newlineIndex != -1) {
+                            val line = lineBuffer.substring(0, newlineIndex).trim()
+                            if (line.isNotEmpty()) {
+                                android.util.Log.d("BluetoothManager", "Full line received: $line")
+                                onDataReceived?.invoke(line)
+                            }
+                            lineBuffer.delete(0, newlineIndex + 1)
+                            newlineIndex = lineBuffer.indexOf("\n")
+                        }
                     } else if (bytes == -1) {
                         break
                     }

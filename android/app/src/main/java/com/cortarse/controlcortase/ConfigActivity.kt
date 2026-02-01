@@ -57,11 +57,14 @@ class ConfigActivity : AppCompatActivity() {
     }
 
     private fun fetchCurrentConfig() {
+        android.util.Log.d("ControlCortase", "Requesting config...")
         BluetoothManager.sendCommand("GET_CONFIG")
         BluetoothManager.onDataReceived = { data ->
             runOnUiThread {
                 try {
-                    val json = JSONObject(data)
+                    val trimmedData = data.trim()
+                    android.util.Log.d("ControlCortase", "Received data: $trimmedData")
+                    val json = JSONObject(trimmedData)
                     if (json.has("devices")) {
                         llDeviceContainer.removeAllViews()
                         val devices = json.getJSONArray("devices")
@@ -88,7 +91,9 @@ class ConfigActivity : AppCompatActivity() {
                             Toast.makeText(this, "No sensors found", Toast.LENGTH_SHORT).show()
                         }
                     }
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.e("ControlCortase", "Error parsing config: ${e.message}")
+                }
             }
         }
     }
@@ -118,8 +123,8 @@ class ConfigActivity : AppCompatActivity() {
             tvPrimaryBadge.visibility = View.VISIBLE
             tvPrimaryBadge.text = "PRIMARY CONTROL: $role"
             // Highlight card
-            (card as? androidx.cardview.widget.CardView)?.strokeWidth = 4
-            (card as? androidx.cardview.widget.CardView)?.strokeColor = android.graphics.Color.parseColor("#FFA726")
+            (card as? com.google.android.material.card.MaterialCardView)?.strokeWidth = 4
+            (card as? com.google.android.material.card.MaterialCardView)?.strokeColor = android.graphics.Color.parseColor("#FFA726")
         }
 
         if (type == "motor") {
