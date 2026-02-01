@@ -65,8 +65,14 @@ class ConfigActivity : AppCompatActivity() {
                     if (json.has("devices")) {
                         llDeviceContainer.removeAllViews()
                         val devices = json.getJSONArray("devices")
-                        for (i in 0 until devices.length()) {
-                            addDeviceToUI(devices.getJSONObject(i))
+                        
+                        // Sort devices: Primary roles first
+                        val sortedList = mutableListOf<JSONObject>()
+                        for (i in 0 until devices.length()) sortedList.add(devices.getJSONObject(i))
+                        sortedList.sortBy { it.optString("role").isEmpty() }
+
+                        for (dev in sortedList) {
+                            addDeviceToUI(dev)
                         }
                     } else if (json.optString("status") == "success" && json.has("results")) {
                         // Scan result
@@ -95,6 +101,7 @@ class ConfigActivity : AppCompatActivity() {
         val btnDelete = card.findViewById<ImageButton>(R.id.btnDeleteDevice)
         val pinsContainer = card.findViewById<LinearLayout>(R.id.llPinsContainer)
         val tvRole = card.findViewById<TextView>(R.id.tvRole)
+        val tvPrimaryBadge = card.findViewById<TextView>(R.id.tvPrimaryBadge)
 
         val id = dev.optString("id")
         val type = dev.optString("type")
@@ -108,6 +115,11 @@ class ConfigActivity : AppCompatActivity() {
         if (role.isNotEmpty()) {
             tvRole.text = "Role: $role"
             tvRole.visibility = View.VISIBLE
+            tvPrimaryBadge.visibility = View.VISIBLE
+            tvPrimaryBadge.text = "PRIMARY CONTROL: $role"
+            // Highlight card
+            (card as? androidx.cardview.widget.CardView)?.strokeWidth = 4
+            (card as? androidx.cardview.widget.CardView)?.strokeColor = android.graphics.Color.parseColor("#FFA726")
         }
 
         if (type == "motor") {

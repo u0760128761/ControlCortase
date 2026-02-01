@@ -426,9 +426,21 @@ HTML_TEMPLATE = """
         .btn-delete { color: var(--danger); cursor: pointer; font-size: 1.2rem; opacity: 0.6; transition: 0.2s; }
         .btn-delete:hover { opacity: 1; }
         
-        .add-device-section { margin-top: 30px; padding: 20px; border: 2px dashed #ccc; border-radius: 15px; text-align: center; }
-        .catalog-select { padding: 10px; border-radius: 10px; border: 1px solid #ddd; margin-right: 10px; width: 200px; }
         .btn-add { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        
+        .role-badge { 
+            position: absolute; 
+            top: -10px; 
+            left: 15px; 
+            background: var(--warning); 
+            color: white; 
+            padding: 2px 10px; 
+            border-radius: 10px; 
+            font-size: 0.7rem; 
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .config-card.has-role { border: 2px solid var(--warning); }
         
         /* Integrated Terminal */
         .terminal-integrated {
@@ -564,17 +576,25 @@ HTML_TEMPLATE = """
                     <div class="motor-side">
                         <div data-t="m_left">Левый мотор</div>
                         <div class="motor-pins">
-                            <span data-t="pin_fwd">Fwd</span>:{{ config.motors.left.forward }}, 
-                            <span data-t="pin_bwd">Bwd</span>:{{ config.motors.left.backward }}, 
-                            <span data-t="pin_spd">Spd</span>:{{ config.motors.left.enable }}
+                            {% if m_left %}
+                                <span data-t="pin_fwd">Fwd</span>:{{ m_left.pins.forward }}, 
+                                <span data-t="pin_bwd">Bwd</span>:{{ m_left.pins.backward }}, 
+                                <span data-t="pin_spd">Spd</span>:{{ m_left.pins.enable }}
+                            {% else %}
+                                <span style="color:red">Role move_left not assigned</span>
+                            {% endif %}
                         </div>
                     </div>
                     <div class="motor-side">
                         <div data-t="m_right">Правый мотор</div>
                         <div class="motor-pins">
-                            <span data-t="pin_fwd">Fwd</span>:{{ config.motors.right.forward }}, 
-                            <span data-t="pin_bwd">Bwd</span>:{{ config.motors.right.backward }}, 
-                            <span data-t="pin_spd">Spd</span>:{{ config.motors.right.enable }}
+                            {% if m_right %}
+                                <span data-t="pin_fwd">Fwd</span>:{{ m_right.pins.forward }}, 
+                                <span data-t="pin_bwd">Bwd</span>:{{ m_right.pins.backward }}, 
+                                <span data-t="pin_spd">Spd</span>:{{ m_right.pins.enable }}
+                            {% else %}
+                                <span style="color:red">Role move_right not assigned</span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -591,8 +611,11 @@ HTML_TEMPLATE = """
         <!-- Configuration Tab -->
         <div id="config" class="tab-content">
             <div class="config-grid" id="configGrid">
-                {% for dev in config.devices %}
-                <div class="config-card" data-id="{{ dev.id }}" data-type="{{ dev.type }}">
+                {% for dev in sorted_devices %}
+                <div class="config-card {{ 'has-role' if dev.role else '' }}" data-id="{{ dev.id }}" data-type="{{ dev.type }}">
+                    {% if dev.role %}
+                    <div class="role-badge">PRIMARY CONTROL: {{ dev.role }}</div>
+                    {% endif %}
                     <div class="config-card-header">
                         <input type="text" class="config-name-input" value="{{ dev.name }}" onchange="markDirty()">
                         <span class="btn-delete" onclick="deleteDevice('{{ dev.id }}')">&times;</span>
@@ -1023,7 +1046,23 @@ HTML_TEMPLATE = """
 @app.route('/')
 def index():
     is_connected = BT_STATUS == "Connected"
-    return render_template_string(HTML_TEMPLATE, status=BT_STATUS, client=BT_CLIENT_INFO, device_name=BT_DEVICE_NAME, connected=is_connected, config=current_config)
+    # Find motors by role for the Control tab display
+    m_left = next((d for d in current_config.get("devices", []) if d.get("role") == "move_left"), None)
+    m_right = next((d for d in current_config.get("devices", []) if d.get("role") == "move_right"), None)
+    
+    # Sort devices so motors with roles are at the top
+    sorted_devices = sorted(current_config.get("devices", []), 
+                           key=lambda x: (x.get("role") is None, x.get("id")))
+
+    return render_template_string(HTML_TEMPLATE, 
+                                status=BT_STATUS, 
+                                client=BT_CLIENT_INFO, 
+                                device_name=BT_DEVICE_NAME, 
+                                connected=is_connected, 
+                                config=current_config,
+                                m_left=m_left,
+                                m_right=m_right,
+                                sorted_devices=sorted_devices)
 
 @app.route('/config', methods=['GET'])
 def get_config():
