@@ -11,11 +11,17 @@ import json
 class LogManager:
     def __init__(self):
         self.listeners = []
+        self.history = []
         self.lock = threading.Lock()
 
     def add_listener(self):
-        q = queue.Queue(maxsize=100)
+        q = queue.Queue(maxsize=500)
         with self.lock:
+            # Play back history to new listener
+            print(f"New log listener added. Playing back {len(self.history)} history lines.")
+            for msg in self.history:
+                try: q.put(msg, block=False)
+                except: pass
             self.listeners.append(q)
         return q
 
@@ -25,9 +31,12 @@ class LogManager:
                 self.listeners.remove(q)
 
     def broadcast(self, msg):
-        msg_line = f"{msg}\n"
+        msg_line = f"{msg}" # Raw text without newline
         print(msg) # Still print to console
         with self.lock:
+            self.history.append(msg_line)
+            if len(self.history) > 50:
+                self.history.pop(0)
             for q in self.listeners:
                 try:
                     q.put(msg_line, block=False)
@@ -543,7 +552,7 @@ HTML_TEMPLATE = """
                 <span data-t="modal_update_title">System Update</span>
                 <span class="close-btn" onclick="closeTerminal()">&times;</span>
             </div>
-            <div id="terminalBody" class="terminal-body"></div>
+            <div id="term-update" class="terminal-body"></div>
         </div>
     </div>
 
@@ -872,7 +881,7 @@ HTML_TEMPLATE = """
 
         let eventSource = null;
         function startUpdate() {
-            const terminalModal = document.getElementById('terminalBody');
+            const terminalModal = document.getElementById('term-update');
             terminalModal.innerHTML = "";
             document.getElementById('terminalModal').style.display = 'flex';
             
@@ -887,16 +896,18 @@ HTML_TEMPLATE = """
             const terms = [
                 document.getElementById('term-control'),
                 document.getElementById('term-config'),
-                document.getElementById('terminalBody')
+                document.getElementById('term-update')
             ];
 
             if (eventSource) eventSource.close();
             eventSource = new EventSource('/stream_logs');
             
             eventSource.onmessage = (e) => {
+                if (e.data === "HEARTBEAT") return;
+                const msg = e.data + "\\n";
                 terms.forEach(term => {
                     if (term) {
-                        term.innerText += e.data;
+                        term.innerText += msg;
                         term.scrollTop = term.scrollHeight;
                     }
                 });
@@ -1153,7 +1164,8 @@ def move(direction):
     return "OK", 200
 
 def process_movement_cmd(cmd):
-    log_msg(f"Executing: {cmd}")
+    msg = f"Movement CMD: {cmd}"
+    log_msg(msg)
     if cmd == "FORWARD":
         set_motor(1, "FORWARD")
         set_motor(2, "FORWARD")
