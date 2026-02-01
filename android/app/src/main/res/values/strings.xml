@@ -3,6 +3,7 @@
     <string name="title_activity_control">Motor Control</string>
     <string name="btn_scan">Scan Devices</string>
     <string name="btn_connect">Connect</string>
+    <string name="btn_disconnect">Disconnect</string>
     <string name="status_disconnected">Disconnected</string>
     <string name="status_connected">Connected</string>
     <string name="status_connecting">Connecting...</string>
@@ -11,7 +12,7 @@
     <string name="btn_forward">Forward</string>
     <string name="btn_backward">Backward</string>
     <string name="btn_stop">STOP</string>
-    <string name="label_speed">Speed: 0%</string>
+    <string name="label_speed">Speed: %d%%</string>
     <string name="label_admin">ADMINISTRATION</string>
     <string name="btn_update">Update (Deploy)</string>
     <string name="btn_restart">Restart Pi</string>
@@ -29,4 +30,10 @@
     <string name="btn_language">Language / Язык / Idioma</string>
     <string name="label_recent_devices">Recent Devices</string>
     <string name="btn_docs">Documentation</string>
+    <string name="msg_confirm_scan">Scanning will disconnect current connection. Continue?</string>
+    <string name="btn_yes">Yes</string>
+    <string name="btn_no">No</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ru">Russian (Русский)</string>
+    <string name="lang_es">Spanish (Español)</string>
 </resources>

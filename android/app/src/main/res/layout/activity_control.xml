@@ -138,7 +138,8 @@
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/label_admin" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/colorPrimary" android:letterSpacing="0.1" android:layout_marginBottom="16dp"/>
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
                         <Button android:id="@+id/btnUpdate" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/btn_update" android:backgroundTint="@color/colorError" android:textColor="@color/white" android:layout_marginEnd="8dp" />
-                        <Button android:id="@+id/btnRestart" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/btn_restart" android:backgroundTint="@color/colorError" android:textColor="@color/white" />
+                        <Button android:id="@+id/btnRestart" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/btn_restart" android:backgroundTint="@color/colorError" android:textColor="@color/white" android:layout_marginEnd="8dp" />
+                        <Button android:id="@+id/btnDisconnect" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/btn_disconnect" android:backgroundTint="@color/colorError" android:textColor="@color/white" />
                     </LinearLayout>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>

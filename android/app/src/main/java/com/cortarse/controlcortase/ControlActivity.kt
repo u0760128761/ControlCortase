@@ -1,5 +1,6 @@
 package com.cortarse.controlcortase
 
+import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +25,7 @@ class ControlActivity : AppCompatActivity() {
     private lateinit var btnLanguageHeader: android.widget.ImageButton
     private lateinit var btnScanHeader: android.widget.ImageButton
     private lateinit var tvStatusHeader: android.widget.TextView
+    private lateinit var containerStatusHeader: android.view.View
 
     // D-Pad Buttons
     private lateinit var btnForward: Button
@@ -35,9 +37,11 @@ class ControlActivity : AppCompatActivity() {
     // Admin
     private lateinit var btnUpdate: Button
     private lateinit var btnRestart: Button
+    private lateinit var btnDisconnect: Button
     private lateinit var rebootOverlay: View
 
     private var isUpdating = false
+    private var isChangingLanguage = false
     private var updateLogBuilder = StringBuilder()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +58,7 @@ class ControlActivity : AppCompatActivity() {
             runOnUiThread {
                 if (!rebootOverlay.isVisible) {
                     tvStatusHeader.text = getString(R.string.status_disconnected)
+                    updateLanguageIcon() // Ensure header reflects state
                     updateLog("Error: Connection lost")
                     finish()
                 }
@@ -84,11 +89,12 @@ class ControlActivity : AppCompatActivity() {
         tvDeviceAddress = header.findViewById(R.id.headerTvDeviceAddress)
         btnLanguageHeader = header.findViewById(R.id.headerBtnLanguage)
         btnScanHeader = header.findViewById(R.id.headerBtnScan)
+        containerStatusHeader = header.findViewById(R.id.headerContainerStatus)
 
         tvLog = findViewById(R.id.tvLog)
         seekBarSpeed = findViewById(R.id.seekBarSpeed)
         tvSpeed = findViewById(R.id.tvSpeed)
-
+        tvSpeed.text = getString(R.string.label_speed, seekBarSpeed.progress)
         updateLanguageIcon()
  
         BluetoothManager.lastDevice?.let { device ->
@@ -106,12 +112,24 @@ class ControlActivity : AppCompatActivity() {
 
         btnUpdate = findViewById(R.id.btnUpdate)
         btnRestart = findViewById(R.id.btnRestart)
+        btnDisconnect = findViewById(R.id.btnDisconnect)
         rebootOverlay = findViewById(R.id.rebootOverlay)
     }
 
     private fun setupListeners() {
-        btnLanguageHeader.setOnClickListener { cycleLanguage() }
+        btnLanguageHeader.setOnClickListener { showLanguageMenu() }
         btnScanHeader.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setMessage(R.string.msg_confirm_scan)
+                .setPositiveButton(R.string.btn_yes) { _, _ ->
+                    BluetoothManager.close()
+                    finish()
+                }
+                .setNegativeButton(R.string.btn_no, null)
+                .show()
+        }
+        containerStatusHeader.setOnClickListener {
+            // Tapping "Connected" should disconnect
             BluetoothManager.close()
             finish()
         }
@@ -140,6 +158,11 @@ class ControlActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
+        }
+        
+        btnDisconnect.setOnClickListener {
+            BluetoothManager.close()
+            finish()
         }
 
         // Speed
@@ -206,17 +229,26 @@ class ControlActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        BluetoothManager.close()
+        if (!isChangingLanguage) {
+            BluetoothManager.close()
+        }
     }
 
-    private fun cycleLanguage() {
-        val currentLang = resources.configuration.locales.get(0).language
-        val newLang = when (currentLang) {
-            "en" -> "ru"
-            "ru" -> "es"
-            else -> "en"
+    private fun showLanguageMenu() {
+        val popup = android.widget.PopupMenu(this, btnLanguageHeader)
+        popup.menu.add(0, 0, 0, getString(R.string.lang_en)).setIcon(R.drawable.ic_flag_us)
+        popup.menu.add(0, 1, 1, getString(R.string.lang_ru)).setIcon(R.drawable.ic_flag_ru)
+        popup.menu.add(0, 2, 2, getString(R.string.lang_es)).setIcon(R.drawable.ic_flag_es)
+        
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                0 -> setLocale("en")
+                1 -> setLocale("ru")
+                2 -> setLocale("es")
+            }
+            true
         }
-        setLocale(newLang)
+        popup.show()
     }
 
     private fun updateLanguageIcon() {
@@ -239,6 +271,7 @@ class ControlActivity : AppCompatActivity() {
         config.setLocale(locale)
         baseContext.resources.updateConfiguration(config, baseContext.resources.displayMetrics)
         
+        isChangingLanguage = true
         val intent = intent
         finish()
         startActivity(intent)

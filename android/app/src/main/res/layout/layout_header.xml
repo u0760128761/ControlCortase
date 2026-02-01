@@ -27,10 +27,13 @@
             android:contentDescription="@string/btn_language" />
 
         <LinearLayout
+            android:id="@+id/headerContainerStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="center"
+            android:background="?attr/selectableItemBackground"
+            android:padding="4dp"
             app:layout_constraintStart_toEndOf="@id/headerBtnLanguage"
             app:layout_constraintEnd_toStartOf="@id/headerBtnScan"
             app:layout_constraintTop_toTopOf="parent"
