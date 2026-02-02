@@ -88,6 +88,19 @@
             android:textSize="16sp"
             app:layout_constraintTop_toBottomOf="@id/cardCurrentConnection" />
 
+        <!-- Test Button for debugging -->
+        <Button
+            android:id="@+id/btnTestConnection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Test BT Connection"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/colorPrimary"
+            android:textColor="@android:color/white"
+            app:layout_constraintTop_toBottomOf="@id/btnScanNetworks"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
         <!-- Scanning Progress -->
         <ProgressBar
             android:id="@+id/progressScanning"
@@ -96,7 +109,7 @@
             android:layout_marginTop="16dp"
             android:indeterminateTint="@color/colorSecondary"
             android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/btnScanNetworks"
+            app:layout_constraintTop_toBottomOf="@id/btnTestConnection"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
