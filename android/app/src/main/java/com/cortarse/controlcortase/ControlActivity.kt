@@ -194,6 +194,7 @@ class ControlActivity : AppCompatActivity() {
         popup.menu.add(getString(R.string.btn_update))
         popup.menu.add(getString(R.string.btn_restart))
         popup.menu.add(getString(R.string.tab_config))
+        popup.menu.add(getString(R.string.wifi_settings))
         popup.menu.add(getString(R.string.btn_disconnect))
 
         popup.setOnMenuItemClickListener { item ->
@@ -214,6 +215,10 @@ class ControlActivity : AppCompatActivity() {
                 }
                 getString(R.string.tab_config) -> {
                     val intent = android.content.Intent(this, ConfigActivity::class.java)
+                    startActivity(intent)
+                }
+                getString(R.string.wifi_settings) -> {
+                    val intent = android.content.Intent(this, WiFiActivity::class.java)
                     startActivity(intent)
                 }
                 getString(R.string.btn_disconnect) -> {

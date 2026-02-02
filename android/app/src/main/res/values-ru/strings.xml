@@ -48,4 +48,34 @@
     <string name="label_right_motor">Правый мотор</string>
     <string name="label_m1_pins">Мотор 1 (Пины: %d, %d, %d)</string>
     <string name="label_m2_pins">Мотор 2 (Пины: %d, %d, %d)</string>
+    
+    <!-- WiFi Settings -->
+    <string name="wifi_settings">Настройки WiFi</string>
+    <string name="wifi_scan_networks">Сканировать сети</string>
+    <string name="wifi_available_networks">Доступные сети</string>
+    <string name="wifi_saved_networks">Сохраненные сети</string>
+    <string name="wifi_current_connection">Текущее подключение</string>
+    <string name="wifi_not_connected">Не подключено</string>
+    <string name="wifi_connected_to">Подключено к %s</string>
+    <string name="wifi_ssid">Имя сети (SSID)</string>
+    <string name="wifi_password">Пароль</string>
+    <string name="wifi_connect">Подключить</string>
+    <string name="wifi_reconnect">Переподключить</string>
+    <string name="wifi_disconnect">Отключить</string>
+    <string name="wifi_scanning">Сканирование сетей...</string>
+    <string name="wifi_connecting">Подключение к %s...</string>
+    <string name="wifi_connection_failed">Ошибка подключения</string>
+    <string name="wifi_enter_password_title">Введите пароль WiFi</string>
+    <string name="wifi_remember_network">Запомнить эту сеть</string>
+    <string name="wifi_signal_strength">Сигнал: %s</string>
+    <string name="wifi_security_open">Открытая</string>
+    <string name="wifi_security_wpa">WPA</string>
+    <string name="wifi_security_wpa2">WPA2</string>
+    <string name="wifi_no_networks">Сети не найдены</string>
+    <string name="wifi_forget_network">Забыть сеть</string>
+    <string name="wifi_forget_network_confirm">Забыть сеть \"%s\"?</string>
+    <string name="wifi_network_forgotten">Сеть \"%s\" забыта</string>
+    <string name="wifi_password_required">Требуется пароль</string>
+    <string name="wifi_disconnect_confirm">Отключиться от сети WiFi?</string>
+    <string name="wifi_disconnected">Отключено от WiFi</string>
 </resources>

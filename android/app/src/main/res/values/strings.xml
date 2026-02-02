@@ -46,4 +46,34 @@
     <string name="label_right_motor">Right Motor</string>
     <string name="label_m1_pins">Motor 1 (Pins: %d, %d, %d)</string>
     <string name="label_m2_pins">Motor 2 (Pins: %d, %d, %d)</string>
+    
+    <!-- WiFi Settings -->
+    <string name="wifi_settings">WiFi Settings</string>
+    <string name="wifi_scan_networks">Scan Networks</string>
+    <string name="wifi_available_networks">Available Networks</string>
+    <string name="wifi_saved_networks">Saved Networks</string>
+    <string name="wifi_current_connection">Current Connection</string>
+    <string name="wifi_not_connected">Not Connected</string>
+    <string name="wifi_connected_to">Connected to %s</string>
+    <string name="wifi_ssid">Network Name (SSID)</string>
+    <string name="wifi_password">Password</string>
+    <string name="wifi_connect">Connect</string>
+    <string name="wifi_reconnect">Reconnect</string>
+    <string name="wifi_disconnect">Disconnect</string>
+    <string name="wifi_scanning">Scanning for networks...</string>
+    <string name="wifi_connecting">Connecting to %s...</string>
+    <string name="wifi_connection_failed">Connection failed</string>
+    <string name="wifi_enter_password_title">Enter WiFi Password</string>
+    <string name="wifi_remember_network">Remember this network</string>
+    <string name="wifi_signal_strength">Signal: %s</string>
+    <string name="wifi_security_open">Open</string>
+    <string name="wifi_security_wpa">WPA</string>
+    <string name="wifi_security_wpa2">WPA2</string>
+    <string name="wifi_no_networks">No networks found</string>
+    <string name="wifi_forget_network">Forget Network</string>
+    <string name="wifi_forget_network_confirm">Forget network \"%s\"?</string>
+    <string name="wifi_network_forgotten">Network \"%s\" forgotten</string>
+    <string name="wifi_password_required">Password is required</string>
+    <string name="wifi_disconnect_confirm">Disconnect from WiFi network?</string>
+    <string name="wifi_disconnected">Disconnected from WiFi</string>
 </resources>

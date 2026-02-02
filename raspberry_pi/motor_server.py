@@ -1357,7 +1357,17 @@ def server_loop():
                             threading.Thread(target=process_update_bt, args=(client_sock,), daemon=True).start()
                         else:
                             client_sock.send("Update already in progress\n".encode())
-                        threading.Thread(target=do_reboot_bt, daemon=True).start()
+                    elif cmd_str == "RESTART":
+                        log_msg("Restart requested via BT")
+                        def do_reboot():
+                            import time
+                            time.sleep(1)
+                            subprocess.run(["sudo", "reboot"])
+                        threading.Thread(target=do_reboot, daemon=True).start()
+                        try:
+                            client_sock.send("REBOOTING\n".encode())
+                        except:
+                            pass
                     elif cmd_str == "GET_CONFIG":
                         log_msg(f"Config requested via BT from {BT_CLIENT_INFO}")
                         cfg_str = json.dumps(current_config)
@@ -1401,6 +1411,104 @@ def server_loop():
                                 results.append({"trigger": trig, "echo": echo})
                         except: pass
                         client_sock.send((json.dumps({"status": "success", "results": results}) + "\n").encode())
+                    elif cmd_str == "WIFI_SCAN":
+                        log_msg("WiFi scan requested via BT")
+                        try:
+                            # Use nmcli to scan for WiFi networks
+                            result = subprocess.run(["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"], 
+                                                  capture_output=True, text=True, timeout=10)
+                            networks = []
+                            for line in result.stdout.strip().split("\n"):
+                                if line:
+                                    parts = line.split(":")
+                                    if len(parts) >= 3:
+                                        ssid = parts[0]
+                                        signal = int(parts[1]) if parts[1].isdigit() else -100
+                                        security = parts[2] if parts[2] else "Open"
+                                        # Convert signal percentage to dBm (approximate)
+                                        signal_dbm = -100 + (signal // 2)
+                                        networks.append({"ssid": ssid, "signal": signal_dbm, "security": security})
+                            response = json.dumps({"networks": networks})
+                            client_sock.send((response + "\n").encode())
+                            log_msg(f"WiFi scan complete: {len(networks)} networks found")
+                        except Exception as e:
+                            error_response = json.dumps({"error": str(e), "networks": []})
+                            client_sock.send((error_response + "\n").encode())
+                            log_msg(f"WiFi scan error: {e}")
+                    elif cmd_str.startswith("WIFI_CONNECT:"):
+                        log_msg("WiFi connect requested via BT")
+                        try:
+                            config_json = cmd_str.split("WIFI_CONNECT:")[1]
+                            wifi_config = json.loads(config_json)
+                            ssid = wifi_config.get("ssid")
+                            password = wifi_config.get("password")
+                            
+                            # Connect using nmcli
+                            if password:
+                                result = subprocess.run(["nmcli", "dev", "wifi", "connect", ssid, "password", password],
+                                                      capture_output=True, text=True, timeout=15)
+                            else:
+                                result = subprocess.run(["nmcli", "dev", "wifi", "connect", ssid],
+                                                      capture_output=True, text=True, timeout=15)
+                            
+                            if result.returncode == 0:
+                                response = json.dumps({"status": "connected", "ssid": ssid})
+                                log_msg(f"Connected to WiFi: {ssid}")
+                            else:
+                                response = json.dumps({"status": "failed", "error": result.stderr.strip()})
+                                log_msg(f"WiFi connection failed: {result.stderr.strip()}")
+                            
+                            client_sock.send((response + "\n").encode())
+                        except Exception as e:
+                            error_response = json.dumps({"status": "failed", "error": str(e)})
+                            client_sock.send((error_response + "\n").encode())
+                            log_msg(f"WiFi connect error: {e}")
+                    elif cmd_str == "WIFI_STATUS":
+                        log_msg("WiFi status requested via BT")
+                        try:
+                            # Get current WiFi connection
+                            result = subprocess.run(["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"],
+                                                  capture_output=True, text=True, timeout=5)
+                            connected = False
+                            ssid = ""
+                            signal = 0
+                            
+                            for line in result.stdout.strip().split("\n"):
+                                if line.startswith("yes:"):
+                                    parts = line.split(":")
+                                    if len(parts) >= 3:
+                                        connected = True
+                                        ssid = parts[1]
+                                        signal = int(parts[2]) if parts[2].isdigit() else 0
+                                        signal = -100 + (signal // 2)  # Convert to dBm
+                                        break
+                            
+                            response = json.dumps({"connected": connected, "ssid": ssid, "signal": signal})
+                            client_sock.send((response + "\n").encode())
+                            log_msg(f"WiFi status: {'Connected to ' + ssid if connected else 'Not connected'}")
+                        except Exception as e:
+                            error_response = json.dumps({"connected": False, "error": str(e)})
+                            client_sock.send((error_response + "\n").encode())
+                            log_msg(f"WiFi status error: {e}")
+                    elif cmd_str == "WIFI_DISCONNECT":
+                        log_msg("WiFi disconnect requested via BT")
+                        try:
+                            # Disconnect from current WiFi
+                            result = subprocess.run(["nmcli", "dev", "disconnect", "wlan0"],
+                                                  capture_output=True, text=True, timeout=5)
+                            
+                            if result.returncode == 0:
+                                response = json.dumps({"status": "disconnected"})
+                                log_msg("Disconnected from WiFi")
+                            else:
+                                response = json.dumps({"status": "failed", "error": result.stderr.strip()})
+                                log_msg(f"WiFi disconnect failed: {result.stderr.strip()}")
+                            
+                            client_sock.send((response + "\n").encode())
+                        except Exception as e:
+                            error_response = json.dumps({"status": "failed", "error": str(e)})
+                            client_sock.send((error_response + "\n").encode())
+                            log_msg(f"WiFi disconnect error: {e}")
                     else:
                         process_movement_cmd(cmd_str)
                     

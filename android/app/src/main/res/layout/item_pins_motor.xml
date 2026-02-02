@@ -10,6 +10,8 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:hint="Fwd"
+        android:textColor="@color/colorOnSurface"
+        android:textColorHint="@color/colorOnSurfaceVariant"
         android:inputType="number" />
 
     <EditText
@@ -18,6 +20,8 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:hint="Bwd"
+        android:textColor="@color/colorOnSurface"
+        android:textColorHint="@color/colorOnSurfaceVariant"
         android:inputType="number" />
 
     <EditText
@@ -26,5 +30,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:hint="Spd"
+        android:textColor="@color/colorOnSurface"
+        android:textColorHint="@color/colorOnSurfaceVariant"
         android:inputType="number" />
 </LinearLayout>
