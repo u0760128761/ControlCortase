@@ -1461,6 +1461,20 @@ def server_loop():
                             
                             log_msg(f"Attempting to connect to: {ssid}")
                             
+                            # First, disconnect from any active WiFi connection
+                            active_result = subprocess.run(["nmcli", "-t", "-f", "NAME,TYPE", "con", "show", "--active"],
+                                                          capture_output=True, text=True, timeout=5)
+                            for line in active_result.stdout.strip().split("\n"):
+                                if line:
+                                    parts = line.split(":")
+                                    if len(parts) >= 2 and "wireless" in parts[1].lower():
+                                        active_wifi = parts[0]
+                                        if active_wifi != ssid:  # Don't disconnect if already connected to target
+                                            log_msg(f"Disconnecting from current WiFi: {active_wifi}")
+                                            subprocess.run(["nmcli", "con", "down", active_wifi], 
+                                                         capture_output=True, timeout=5)
+                                        break
+                            
                             # Try to connect using nmcli
                             # For secured networks, we need to specify the key-mgmt
                             if password:
@@ -1540,16 +1554,32 @@ def server_loop():
                     elif cmd_str == "WIFI_DISCONNECT":
                         log_msg("WiFi disconnect requested via BT")
                         try:
-                            # Disconnect from current WiFi
-                            result = subprocess.run(["nmcli", "dev", "disconnect", "wlan0"],
+                            # First, find the active WiFi connection name
+                            result = subprocess.run(["nmcli", "-t", "-f", "NAME,TYPE", "con", "show", "--active"],
                                                   capture_output=True, text=True, timeout=5)
                             
-                            if result.returncode == 0:
-                                response = json.dumps({"status": "disconnected"})
-                                log_msg("Disconnected from WiFi")
+                            wifi_connection = None
+                            for line in result.stdout.strip().split("\n"):
+                                if line:
+                                    parts = line.split(":")
+                                    if len(parts) >= 2 and "wireless" in parts[1].lower():
+                                        wifi_connection = parts[0]
+                                        break
+                            
+                            if wifi_connection:
+                                # Disconnect the active WiFi connection
+                                result = subprocess.run(["nmcli", "con", "down", wifi_connection],
+                                                      capture_output=True, text=True, timeout=5)
+                                
+                                if result.returncode == 0:
+                                    response = json.dumps({"status": "disconnected"})
+                                    log_msg(f"Disconnected from WiFi: {wifi_connection}")
+                                else:
+                                    response = json.dumps({"status": "failed", "error": result.stderr.strip()})
+                                    log_msg(f"WiFi disconnect failed: {result.stderr.strip()}")
                             else:
-                                response = json.dumps({"status": "failed", "error": result.stderr.strip()})
-                                log_msg(f"WiFi disconnect failed: {result.stderr.strip()}")
+                                response = json.dumps({"status": "disconnected", "message": "No active WiFi connection"})
+                                log_msg("No active WiFi connection to disconnect")
                             
                             client_sock.send((response + "\n").encode())
                         except Exception as e:
