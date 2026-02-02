@@ -1415,19 +1415,35 @@ def server_loop():
                         log_msg("WiFi scan requested via BT")
                         try:
                             # Use nmcli to scan for WiFi networks
+                            # First trigger a rescan
+                            subprocess.run(["nmcli", "dev", "wifi", "rescan"], capture_output=True, timeout=5)
+                            import time
+                            time.sleep(2)  # Wait for scan to complete
+                            
                             result = subprocess.run(["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"], 
                                                   capture_output=True, text=True, timeout=10)
                             networks = []
+                            seen_ssids = set()
+                            
+                            log_msg(f"nmcli output:\n{result.stdout}")
+                            
                             for line in result.stdout.strip().split("\n"):
                                 if line:
                                     parts = line.split(":")
-                                    if len(parts) >= 3:
-                                        ssid = parts[0]
+                                    if len(parts) >= 2:
+                                        ssid = parts[0].strip()
+                                        if not ssid or ssid in seen_ssids:
+                                            continue
+                                        seen_ssids.add(ssid)
+                                        
                                         signal = int(parts[1]) if parts[1].isdigit() else -100
-                                        security = parts[2] if parts[2] else "Open"
+                                        # Security can have multiple values separated by spaces
+                                        security = parts[2].strip() if len(parts) >= 3 and parts[2].strip() else "Open"
+                                        
                                         # Convert signal percentage to dBm (approximate)
                                         signal_dbm = -100 + (signal // 2)
                                         networks.append({"ssid": ssid, "signal": signal_dbm, "security": security})
+                            
                             response = json.dumps({"networks": networks})
                             client_sock.send((response + "\n").encode())
                             log_msg(f"WiFi scan complete: {len(networks)} networks found")
@@ -1441,22 +1457,53 @@ def server_loop():
                             config_json = cmd_str.split("WIFI_CONNECT:")[1]
                             wifi_config = json.loads(config_json)
                             ssid = wifi_config.get("ssid")
-                            password = wifi_config.get("password")
+                            password = wifi_config.get("password", "")
                             
-                            # Connect using nmcli
+                            log_msg(f"Attempting to connect to: {ssid}")
+                            
+                            # Try to connect using nmcli
+                            # For secured networks, we need to specify the key-mgmt
                             if password:
-                                result = subprocess.run(["nmcli", "dev", "wifi", "connect", ssid, "password", password],
-                                                      capture_output=True, text=True, timeout=15)
+                                # Try WPA-PSK first (most common)
+                                result = subprocess.run([
+                                    "nmcli", "dev", "wifi", "connect", ssid, 
+                                    "password", password
+                                ], capture_output=True, text=True, timeout=20)
+                                
+                                # If that fails, try creating a connection profile explicitly
+                                if result.returncode != 0:
+                                    log_msg(f"First attempt failed: {result.stderr}")
+                                    # Delete any existing connection with same name
+                                    subprocess.run(["nmcli", "con", "delete", ssid], capture_output=True)
+                                    
+                                    # Create new connection
+                                    result = subprocess.run([
+                                        "nmcli", "con", "add", 
+                                        "type", "wifi",
+                                        "con-name", ssid,
+                                        "ssid", ssid,
+                                        "wifi-sec.key-mgmt", "wpa-psk",
+                                        "wifi-sec.psk", password
+                                    ], capture_output=True, text=True, timeout=10)
+                                    
+                                    if result.returncode == 0:
+                                        # Activate the connection
+                                        result = subprocess.run([
+                                            "nmcli", "con", "up", ssid
+                                        ], capture_output=True, text=True, timeout=15)
                             else:
-                                result = subprocess.run(["nmcli", "dev", "wifi", "connect", ssid],
-                                                      capture_output=True, text=True, timeout=15)
+                                # Open network
+                                result = subprocess.run([
+                                    "nmcli", "dev", "wifi", "connect", ssid
+                                ], capture_output=True, text=True, timeout=15)
                             
                             if result.returncode == 0:
                                 response = json.dumps({"status": "connected", "ssid": ssid})
                                 log_msg(f"Connected to WiFi: {ssid}")
                             else:
-                                response = json.dumps({"status": "failed", "error": result.stderr.strip()})
-                                log_msg(f"WiFi connection failed: {result.stderr.strip()}")
+                                error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                                response = json.dumps({"status": "failed", "error": error_msg})
+                                log_msg(f"WiFi connection failed: {error_msg}")
                             
                             client_sock.send((response + "\n").encode())
                         except Exception as e:
