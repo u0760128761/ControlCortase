@@ -26,6 +26,19 @@
             app:layout_constraintBottom_toBottomOf="parent"
             android:contentDescription="@string/btn_language" />
 
+        <ImageButton
+            android:id="@+id/headerBtnHelp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:src="@drawable/ic_help"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:scaleType="fitCenter"
+            app:layout_constraintStart_toEndOf="@id/headerBtnLanguage"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:contentDescription="@string/btn_help" />
+
         <LinearLayout
             android:id="@+id/headerContainerStatus"
             android:layout_width="wrap_content"

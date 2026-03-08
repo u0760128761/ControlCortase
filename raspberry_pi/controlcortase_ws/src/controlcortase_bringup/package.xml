@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>controlcortase_bringup</name>
+  <version>1.0.0</version>
+  <description>Bringup launch files and configuration for ControlCortase ROS2 robot.
+    Provides the main controlcortase_bringup.launch.py with params.yaml.</description>
+
+  <maintainer email="admin@controlcortase.local">ControlCortase Project</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>controlcortase_motor</exec_depend>
+  <exec_depend>controlcortase_bluetooth_bridge</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

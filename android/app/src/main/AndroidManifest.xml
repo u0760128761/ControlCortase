@@ -50,6 +50,10 @@
         <activity
             android:name=".WiFiActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".DocsActivity"
+            android:exported="false" />
             
     </application>
 

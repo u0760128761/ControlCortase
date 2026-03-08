@@ -17,7 +17,7 @@ class ConfigActivity : AppCompatActivity() {
     private lateinit var btnAddDevice: Button
     private lateinit var btnSaveConfig: Button
     private lateinit var btnRefreshConfig: Button
-    
+
     private var currentScanningCard: View? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +45,7 @@ class ConfigActivity : AppCompatActivity() {
         val tvStatus = header.findViewById<TextView>(R.id.headerTvStatus)
         val tvDeviceName = header.findViewById<TextView>(R.id.headerTvDeviceName)
         val tvDeviceAddress = header.findViewById<TextView>(R.id.headerTvDeviceAddress)
-        
+
         tvStatus.text = getString(R.string.status_connected)
         BluetoothManager.lastDevice?.let { device ->
             tvDeviceName.visibility = View.VISIBLE
@@ -53,7 +53,7 @@ class ConfigActivity : AppCompatActivity() {
             tvDeviceName.text = getString(R.string.label_device_name, device.name ?: "Unknown")
             tvDeviceAddress.text = getString(R.string.label_device_address, device.address)
         }
-        
+
         header.findViewById<View>(R.id.headerBtnLanguage).visibility = View.GONE
         header.findViewById<View>(R.id.headerBtnScan).visibility = View.GONE
         header.findViewById<View>(R.id.headerBtnAdmin).visibility = View.GONE
@@ -71,8 +71,8 @@ class ConfigActivity : AppCompatActivity() {
                     if (json.has("devices")) {
                         llDeviceContainer.removeAllViews()
                         val devices = json.getJSONArray("devices")
-                        
-                        // Sort devices: Primary roles first
+
+                        // Первичные роли — вверху
                         val sortedList = mutableListOf<JSONObject>()
                         for (i in 0 until devices.length()) sortedList.add(devices.getJSONObject(i))
                         sortedList.sortBy { it.optString("role").isEmpty() }
@@ -81,7 +81,6 @@ class ConfigActivity : AppCompatActivity() {
                             addDeviceToUI(dev)
                         }
                     } else if (json.optString("status") == "success" && json.has("results")) {
-                        // Scan result
                         val results = json.getJSONArray("results")
                         if (results.length() > 0) {
                             val first = results.getJSONObject(0)
@@ -104,7 +103,7 @@ class ConfigActivity : AppCompatActivity() {
     private fun addDeviceToUI(dev: JSONObject) {
         val inflater = LayoutInflater.from(this)
         val card = inflater.inflate(R.layout.item_device_config, llDeviceContainer, false)
-        
+
         val etName = card.findViewById<EditText>(R.id.etDeviceName)
         val btnDelete = card.findViewById<ImageButton>(R.id.btnDeleteDevice)
         val pinsContainer = card.findViewById<LinearLayout>(R.id.llPinsContainer)
@@ -118,28 +117,26 @@ class ConfigActivity : AppCompatActivity() {
         val pins = dev.optJSONObject("pins") ?: JSONObject()
 
         etName.setText(name)
-        card.tag = dev // Store full metadata
+        card.tag = dev
 
         if (role.isNotEmpty()) {
             tvRole.text = "Role: $role"
             tvRole.visibility = View.VISIBLE
             tvPrimaryBadge.visibility = View.VISIBLE
             tvPrimaryBadge.text = "PRIMARY CONTROL: $role"
-            // Highlight card
             (card as? com.google.android.material.card.MaterialCardView)?.strokeWidth = 4
-            (card as? com.google.android.material.card.MaterialCardView)?.strokeColor = android.graphics.Color.parseColor("#FFA726")
+            (card as? com.google.android.material.card.MaterialCardView)?.strokeColor =
+                android.graphics.Color.parseColor("#FFA726")
         }
 
         if (type == "motor") {
             val pinsView = inflater.inflate(R.layout.item_pins_motor, pinsContainer, true)
-            pinsView.findViewById<EditText>(R.id.etPinFwd).setText(pins.optInt("forward").toString())
-            pinsView.findViewById<EditText>(R.id.etPinBwd).setText(pins.optInt("backward").toString())
-            pinsView.findViewById<EditText>(R.id.etPinSpd).setText(pins.optInt("enable").toString())
+            setupMotorPinsView(pinsView, dev, pins)
         } else if (type == "hcsr04") {
             val pinsView = inflater.inflate(R.layout.item_pins_hcsr04, pinsContainer, true)
             pinsView.findViewById<EditText>(R.id.etPinTrig).setText(pins.optInt("trigger").toString())
             pinsView.findViewById<EditText>(R.id.etPinEcho).setText(pins.optInt("echo").toString())
-            
+
             pinsView.findViewById<Button>(R.id.btnScanSensor).setOnClickListener {
                 currentScanningCard = card
                 BluetoothManager.sendCommand("SCAN_CONFIG")
@@ -149,6 +146,57 @@ class ConfigActivity : AppCompatActivity() {
 
         btnDelete.setOnClickListener { llDeviceContainer.removeView(card) }
         llDeviceContainer.addView(card)
+    }
+
+    /**
+     * Настройка секции пинов мотора:
+     * - Определяет тип драйвера (driver_type из JSON или "l298n" по умолчанию)
+     * - Устанавливает нужный RadioButton
+     * - Переключает видимость секций L298N / BTS7960
+     * - Настраивает слушатель RadioGroup для динамического переключения
+     */
+    private fun setupMotorPinsView(pinsView: View, dev: JSONObject, pins: JSONObject) {
+        val rgDriverType = pinsView.findViewById<RadioGroup>(R.id.rgDriverType)
+        val rbL298N = pinsView.findViewById<RadioButton>(R.id.rbDriverL298N)
+        val rbBts7960 = pinsView.findViewById<RadioButton>(R.id.rbDriverBts7960)
+        val llL298N = pinsView.findViewById<View>(R.id.llPinsL298N)
+        val llBts7960 = pinsView.findViewById<View>(R.id.llPinsBts7960)
+
+        // Определяем текущий тип драйвера
+        val driverType = dev.optString("driver_type", "l298n").lowercase()
+        val isBts = driverType == "bts7960"
+
+        // Устанавливаем начальное состояние RadioGroup
+        if (isBts) rbBts7960.isChecked = true else rbL298N.isChecked = true
+
+        // Переключение видимости
+        llL298N.visibility = if (isBts) View.GONE else View.VISIBLE
+        llBts7960.visibility = if (isBts) View.VISIBLE else View.GONE
+
+        // Заполняем поля L298N
+        pinsView.findViewById<EditText>(R.id.etPinFwd).setText(pins.optInt("forward", 0).let { if (it > 0) it.toString() else "" })
+        pinsView.findViewById<EditText>(R.id.etPinBwd).setText(pins.optInt("backward", 0).let { if (it > 0) it.toString() else "" })
+        pinsView.findViewById<EditText>(R.id.etPinSpd).setText(pins.optInt("enable", 0).let { if (it > 0) it.toString() else "" })
+
+        // Заполняем поля BTS7960
+        pinsView.findViewById<EditText>(R.id.etBtsRpwm).setText(pins.optInt("rpwm", 0).let { if (it > 0) it.toString() else "" })
+        pinsView.findViewById<EditText>(R.id.etBtsLpwm).setText(pins.optInt("lpwm", 0).let { if (it > 0) it.toString() else "" })
+        pinsView.findViewById<EditText>(R.id.etBtsRen).setText(pins.optInt("r_en", 0).let { if (it > 0) it.toString() else "" })
+        pinsView.findViewById<EditText>(R.id.etBtsLen).setText(pins.optInt("l_en", 0).let { if (it > 0) it.toString() else "" })
+
+        // Динамическое переключение при смене RadioButton
+        rgDriverType.setOnCheckedChangeListener { _, checkedId ->
+            when (checkedId) {
+                R.id.rbDriverL298N -> {
+                    llL298N.visibility = View.VISIBLE
+                    llBts7960.visibility = View.GONE
+                }
+                R.id.rbDriverBts7960 -> {
+                    llL298N.visibility = View.GONE
+                    llBts7960.visibility = View.VISIBLE
+                }
+            }
+        }
     }
 
     private fun showAddDeviceDialog() {
@@ -161,6 +209,7 @@ class ConfigActivity : AppCompatActivity() {
                 dev.put("id", "dev_" + System.currentTimeMillis() % 10000)
                 dev.put("type", type)
                 dev.put("name", if (which == 0) "New Motor" else "New Sensor")
+                dev.put("driver_type", "l298n")  // L298N по умолчанию для новых моторов
                 dev.put("pins", JSONObject())
                 addDeviceToUI(dev)
             }
@@ -173,7 +222,7 @@ class ConfigActivity : AppCompatActivity() {
             for (i in 0 until llDeviceContainer.childCount) {
                 val card = llDeviceContainer.getChildAt(i)
                 val meta = card.tag as JSONObject
-                
+
                 val devJson = JSONObject()
                 devJson.put("id", meta.getString("id"))
                 devJson.put("type", meta.getString("type"))
@@ -183,9 +232,24 @@ class ConfigActivity : AppCompatActivity() {
                 val pins = JSONObject()
                 if (devJson.getString("type") == "motor") {
                     val pContainer = card.findViewById<ViewGroup>(R.id.llPinsContainer)
-                    pins.put("forward", pContainer.findViewById<EditText>(R.id.etPinFwd).text.toString().toInt())
-                    pins.put("backward", pContainer.findViewById<EditText>(R.id.etPinBwd).text.toString().toInt())
-                    pins.put("enable", pContainer.findViewById<EditText>(R.id.etPinSpd).text.toString().toInt())
+
+                    // Определяем выбранный тип драйвера
+                    val rg = pContainer.findViewById<RadioGroup>(R.id.rgDriverType)
+                    val isBts = rg.checkedRadioButtonId == R.id.rbDriverBts7960
+                    devJson.put("driver_type", if (isBts) "bts7960" else "l298n")
+
+                    if (isBts) {
+                        // Сохраняем пины BTS7960
+                        pins.put("rpwm", pContainer.findViewById<EditText>(R.id.etBtsRpwm).text.toString().toIntOrNull() ?: 0)
+                        pins.put("lpwm", pContainer.findViewById<EditText>(R.id.etBtsLpwm).text.toString().toIntOrNull() ?: 0)
+                        pins.put("r_en", pContainer.findViewById<EditText>(R.id.etBtsRen).text.toString().toIntOrNull() ?: 0)
+                        pins.put("l_en", pContainer.findViewById<EditText>(R.id.etBtsLen).text.toString().toIntOrNull() ?: 0)
+                    } else {
+                        // Сохраняем пины L298N
+                        pins.put("forward", pContainer.findViewById<EditText>(R.id.etPinFwd).text.toString().toInt())
+                        pins.put("backward", pContainer.findViewById<EditText>(R.id.etPinBwd).text.toString().toInt())
+                        pins.put("enable", pContainer.findViewById<EditText>(R.id.etPinSpd).text.toString().toInt())
+                    }
                 } else if (devJson.getString("type") == "hcsr04") {
                     val pContainer = card.findViewById<ViewGroup>(R.id.llPinsContainer)
                     pins.put("trigger", pContainer.findViewById<EditText>(R.id.etPinTrig).text.toString().toInt())

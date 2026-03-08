@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var btnLanguage: android.widget.ImageButton
+    private lateinit var btnHelp: android.widget.ImageButton
     private lateinit var btnScanHeader: android.widget.ImageButton
     private lateinit var tvStatusHeader: android.widget.TextView
     private lateinit var containerStatusHeader: android.view.View
@@ -79,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private fun initHeader() {
         val header = findViewById<View>(R.id.layoutHeader)
         btnLanguage = header.findViewById(R.id.headerBtnLanguage)
+        btnHelp = header.findViewById(R.id.headerBtnHelp)
         btnScanHeader = header.findViewById(R.id.headerBtnScan)
         tvStatusHeader = header.findViewById(R.id.headerTvStatus)
         containerStatusHeader = header.findViewById(R.id.headerContainerStatus)
@@ -87,6 +89,10 @@ class MainActivity : AppCompatActivity() {
         tvStatusHeader.text = getString(R.string.status_disconnected)
 
         btnLanguage.setOnClickListener { showLanguageMenu() }
+        btnHelp.setOnClickListener {
+            // Открыть экран документации
+            startActivity(Intent(this, DocsActivity::class.java))
+        }
         btnScanHeader.setOnClickListener { checkPermissionsAndScan() }
         containerStatusHeader.setOnClickListener {
             // Tapping "Disconnected" should connect to last device if available

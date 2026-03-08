@@ -25,11 +25,23 @@
     <string name="pin_spd">Spd</string>
     <string name="confirm_restart">Are you sure you want to restart the device?</string>
     <string name="hint_log">Log...</string>
+    <!-- Типы драйверов -->
+    <string name="label_driver_type">Motor Driver Type</string>
+    <string name="label_pins_l298n">L298N Pins: IN1(Fwd) | IN2(Bwd) | ENA(Speed)</string>
+    <string name="label_pins_bts7960">BTS7960 Pins: RPWM | LPWM | R_EN | L_EN</string>
+    <string name="hint_pin_in1">IN1 (Fwd)</string>
+    <string name="hint_pin_in2">IN2 (Bwd)</string>
+    <string name="hint_pin_ena">ENA (Spd)</string>
+    <string name="hint_pin_rpwm">RPWM (Fwd)</string>
+    <string name="hint_pin_lpwm">LPWM (Bwd)</string>
+    <string name="hint_pin_r_en">R_EN</string>
+    <string name="hint_pin_l_en">L_EN</string>
     <string name="error_bluetooth_not_supported">Bluetooth not supported</string>
     <string name="error_connect_failed">Connection failed</string>
     <string name="btn_language">Language / Язык / Idioma</string>
     <string name="label_recent_devices">Recent Devices</string>
     <string name="btn_docs">Documentation</string>
+    <string name="btn_help">Help (Docs)</string>
     <string name="msg_confirm_scan">Scanning will disconnect current connection. Continue?</string>
     <string name="btn_yes">Yes</string>
     <string name="btn_no">No</string>

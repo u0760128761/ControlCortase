@@ -1,52 +1,12 @@
 # Журнал изменений (CHANGELOG)
 
-## [2026-03-07] — ROS2 Рефакторинг
+## [2026-03-06]
 
-### Добавлено (Raspberry Pi — ROS2 Humble)
-- Создан ROS2 workspace: `raspberry_pi/controlcortase_ws/`
-- Пакет `controlcortase_motor`: узел `motor_controller_node.py`
-    - Подписка `/cmd_vel` (geometry_msgs/Twist)
-    - Конвертация в дифференциальный привод L298N (GPIO/PWM)
-    - Watchdog 500 мс (автостоп при потере связи)
-    - Диагностика через `/diagnostics`
-    - Параметры GPIO пинов через ROS2 Parameter Server
-- Пакет `controlcortase_bluetooth_bridge`: узел `bluetooth_bridge_node.py`
-    - RFCOMM сервер с поддержкой переподключения
-    - Парсинг устаревшего ASCII протокола → Twist
-    - Thread-safe публикация, ACK-подтверждения
-    - Watchdog при отключении Bluetooth клиента
-- Пакет `controlcortase_bringup`: launch файл + params.yaml
-    - `controlcortase_bringup.launch.py` — запуск всех узлов
-    - `params.yaml` — конфигурация GPIO и скоростных ограничений
-- Документация: `README.md` (установка, сборка, запуск) и `MIGRATION.md`
-- Android-приложение **не изменялось** — протокол полностью совместим
-
-### Рефакторинг (Android UI)
-- Кнопка "Справка" (?) добавлена в `layout_header.xml` (Правило 8)
-    - `ic_help.xml`, строки `btn_help` на EN/RU/ES
-- `DocsActivity.kt` — экран документации на языке интерфейса
-    - `assets/docs/README_EN|RU|ES.md`
-- `DocsActivity` зарегистрирована в `AndroidManifest.xml`
-
----
+### Документация (Соответствие правилу 7)
+- Документация (`README`, `RULES`, `TROUBLESHOOTING`) переведена и разделена на 3 языка (RU, EN, ES).
+- Оригинальные файлы сохранены как русские версии. Подготовлен импорт в `assets`.
 
 ## [2026-01-29]
-
-
-### Добавлено
-- Кнопка "Справка" (?) добавлена в общий заголовок `layout_header.xml` (Правило 8).
-    - Создана векторная иконка `ic_help.xml`.
-    - Добавлены строки `btn_help` в `strings.xml` (EN), `values-ru/strings.xml` (RU), `values-es/strings.xml` (ES).
-- Создан экран документации `DocsActivity.kt` + макет `activity_docs.xml`.
-    - Отображает README на текущем языке интерфейса (EN/RU/ES).
-    - Файлы документации: `assets/docs/README_EN.md`, `README_RU.md`, `README_ES.md`.
-- `DocsActivity` зарегистрирована в `AndroidManifest.xml`.
-- Обработчики нажатия `btnHelp` / `btnHelpHeader` подключены в `MainActivity.kt` и `ControlActivity.kt`.
-
----
-
-## [2026-01-29]
-
 
 ### Добавлено
 - Установлена иконка приложения из пользовательского изображения (`uploaded_media_1769707147594.jpg`).

@@ -26,12 +26,24 @@
     <string name="pin_spd">Vel</string>
     <string name="confirm_restart">¿Está seguro de que desea reiniciar el dispositivo?</string>
     <string name="hint_log">Registro...</string>
+    <!-- Tipos de controladores -->
+    <string name="label_driver_type">Tipo de controlador de motor</string>
+    <string name="label_pins_l298n">Pines L298N: IN1(Adelante) | IN2(Atrás) | ENA(Velocidad)</string>
+    <string name="label_pins_bts7960">Pines BTS7960: RPWM | LPWM | R_EN | L_EN</string>
+    <string name="hint_pin_in1">IN1 (Adelante)</string>
+    <string name="hint_pin_in2">IN2 (Atrás)</string>
+    <string name="hint_pin_ena">ENA (Velocidad)</string>
+    <string name="hint_pin_rpwm">RPWM (Adelante)</string>
+    <string name="hint_pin_lpwm">LPWM (Atrás)</string>
+    <string name="hint_pin_r_en">R_EN</string>
+    <string name="hint_pin_l_en">L_EN</string>
     <string name="error_bluetooth_not_supported">Bluetooth no soportado</string>
     <string name="error_connect_failed">Error de conexión</string>
     <!-- New Strings -->
     <string name="btn_language">Idioma / Language / Язык</string>
     <string name="label_recent_devices">Dispositivos recientes</string>
     <string name="btn_docs">Documentación</string>
+    <string name="btn_help">Ayuda (Documentación)</string>
     <string name="msg_confirm_scan">El escaneo desconectará la conexión actual. ¿Continuar?</string>
     <string name="btn_yes">Sí</string>
     <string name="btn_no">No</string>

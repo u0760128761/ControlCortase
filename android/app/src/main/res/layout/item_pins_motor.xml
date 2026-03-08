@@ -1,36 +1,232 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Секция пинов мотора в карточке конфигурации.
+    Содержит:
+      1. RadioGroup выбора типа драйвера (L298N / BTS7960)
+      2. Поля пинов L298N (Fwd | Bwd | Spd/EN) — видно при выборе L298N
+      3. Поля пинов BTS7960 (RPWM | LPWM | R_EN | L_EN) — видно при выборе BTS7960
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal">
+    android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/etPinFwd"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:hint="Fwd"
-        android:textColor="@color/colorOnSurface"
-        android:textColorHint="@color/colorOnSurfaceVariant"
-        android:inputType="number" />
+    <!-- Разделитель -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginBottom="8dp"
+        android:background="@color/colorSurfaceVariant" />
 
-    <EditText
-        android:id="@+id/etPinBwd"
-        android:layout_width="0dp"
+    <!-- Заголовок: выбор драйвера -->
+    <TextView
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:hint="Bwd"
-        android:textColor="@color/colorOnSurface"
-        android:textColorHint="@color/colorOnSurfaceVariant"
-        android:inputType="number" />
+        android:text="@string/label_driver_type"
+        android:textColor="@color/colorOnSurfaceVariant"
+        android:textSize="11sp"
+        android:textAllCaps="true"
+        android:letterSpacing="0.08"
+        android:layout_marginBottom="6dp" />
 
-    <EditText
-        android:id="@+id/etPinSpd"
-        android:layout_width="0dp"
+    <!-- RadioGroup: тип драйвера -->
+    <RadioGroup
+        android:id="@+id/rgDriverType"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:hint="Spd"
-        android:textColor="@color/colorOnSurface"
-        android:textColorHint="@color/colorOnSurfaceVariant"
-        android:inputType="number" />
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <RadioButton
+            android:id="@+id/rbDriverL298N"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="L298N"
+            android:textColor="@color/colorOnSurface"
+            android:buttonTint="@color/colorPrimary"
+            android:checked="true" />
+
+        <RadioButton
+            android:id="@+id/rbDriverBts7960"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="BTS7960"
+            android:textColor="@color/colorOnSurface"
+            android:buttonTint="@color/colorPrimary" />
+
+    </RadioGroup>
+
+    <!-- =============================================================== -->
+    <!-- Секция L298N: IN1(Fwd) / IN2(Bwd) / ENA(Spd)                  -->
+    <!-- =============================================================== -->
+    <LinearLayout
+        android:id="@+id/llPinsL298N"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="visible">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_pins_l298n"
+            android:textColor="@color/colorOnSurfaceVariant"
+            android:textSize="10sp"
+            android:layout_marginBottom="4dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etPinFwd"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_pin_in1"
+                    android:inputType="number"
+                    android:textColor="@color/colorOnSurface" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etPinBwd"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_pin_in2"
+                    android:inputType="number"
+                    android:textColor="@color/colorOnSurface" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etPinSpd"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_pin_ena"
+                    android:inputType="number"
+                    android:textColor="@color/colorOnSurface" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- =============================================================== -->
+    <!-- Секция BTS7960: RPWM / LPWM / R_EN / L_EN                     -->
+    <!-- =============================================================== -->
+    <LinearLayout
+        android:id="@+id/llPinsBts7960"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/label_pins_bts7960"
+            android:textColor="@color/colorOnSurfaceVariant"
+            android:textSize="10sp"
+            android:layout_marginBottom="4dp" />
+
+        <!-- Строка 1: RPWM и LPWM -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="4dp">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etBtsRpwm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_pin_rpwm"
+                    android:inputType="number"
+                    android:textColor="@color/colorOnSurface" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etBtsLpwm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_pin_lpwm"
+                    android:inputType="number"
+                    android:textColor="@color/colorOnSurface" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+        </LinearLayout>
+
+        <!-- Строка 2: R_EN и L_EN -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etBtsRen"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_pin_r_en"
+                    android:inputType="number"
+                    android:textColor="@color/colorOnSurface" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etBtsLen"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/hint_pin_l_en"
+                    android:inputType="number"
+                    android:textColor="@color/colorOnSurface" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+        </LinearLayout>
+    </LinearLayout>
+
 </LinearLayout>

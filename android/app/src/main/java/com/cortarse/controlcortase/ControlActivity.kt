@@ -25,6 +25,7 @@ class ControlActivity : AppCompatActivity() {
     private lateinit var tvDeviceName: TextView
     private lateinit var tvDeviceAddress: TextView
     private lateinit var btnLanguageHeader: android.widget.ImageButton
+    private lateinit var btnHelpHeader: android.widget.ImageButton
     private lateinit var btnScanHeader: android.widget.ImageButton
     private lateinit var tvStatusHeader: android.widget.TextView
     private lateinit var containerStatusHeader: android.view.View
@@ -108,6 +109,7 @@ class ControlActivity : AppCompatActivity() {
         tvDeviceName = header.findViewById(R.id.headerTvDeviceName)
         tvDeviceAddress = header.findViewById(R.id.headerTvDeviceAddress)
         btnLanguageHeader = header.findViewById(R.id.headerBtnLanguage)
+        btnHelpHeader = header.findViewById(R.id.headerBtnHelp)
         btnScanHeader = header.findViewById(R.id.headerBtnScan)
         btnAdminHeader = header.findViewById(R.id.headerBtnAdmin)
         containerStatusHeader = header.findViewById(R.id.headerContainerStatus)
@@ -143,6 +145,10 @@ class ControlActivity : AppCompatActivity() {
 
     private fun setupListeners() {
         btnLanguageHeader.setOnClickListener { showLanguageMenu() }
+        btnHelpHeader.setOnClickListener {
+            // Открыть экран документации
+            startActivity(android.content.Intent(this, DocsActivity::class.java))
+        }
         btnScanHeader.setOnClickListener {
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setMessage(R.string.msg_confirm_scan)

@@ -1290,6 +1290,154 @@ def process_update_bt(sock):
     finally:
         is_updating = False
 
+
+
+# ---------------------------------------------------------------------------
+# WiFi Manager (управление через nmcli/NetworkManager)
+# ---------------------------------------------------------------------------
+
+def _nmcli_run(*args, **kwargs):
+    """Выполнить nmcli команду. Возвращает (returncode, stdout, stderr)."""
+    timeout = kwargs.get('timeout', 20)
+    cmd = ['nmcli'] + list(args)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return -1, '', 'Timeout'
+    except FileNotFoundError:
+        return -1, '', 'nmcli not found'
+    except Exception as e:
+        return -1, '', str(e)
+
+
+def wifi_get_status():
+    rc, out, err = _nmcli_run('-t', '-f', 'active,ssid,signal', 'dev', 'wifi')
+    if rc != 0:
+        return {'connected': False, 'error': err}
+    for line in out.splitlines():
+        parts = line.split(':')
+        if len(parts) >= 2 and parts[0] == 'yes':
+            ssid = parts[1]
+            signal = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+            _, ip_out, _ = _nmcli_run('-t', '-f', 'IP4.ADDRESS', 'con', 'show', '--active')
+            ip = ip_out.split('\n')[0].replace('IP4.ADDRESS[1]:', '').split('/')[0].strip()
+            return {'connected': True, 'ssid': ssid, 'signal': signal, 'ip': ip}
+    return {'connected': False}
+
+
+def wifi_scan():
+    import time as _t
+    _nmcli_run('dev', 'wifi', 'rescan', timeout=6)
+    _t.sleep(2)
+    rc, out, err = _nmcli_run('-t', '-f', 'ssid,signal,security', 'dev', 'wifi', 'list')
+    if rc != 0:
+        return {'networks': [], 'error': err}
+    seen, networks = set(), []
+    for line in out.splitlines():
+        parts = line.split(':')
+        ssid = parts[0].strip()
+        if not ssid or ssid in seen:
+            continue
+        seen.add(ssid)
+        signal = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        security = parts[2].strip() if len(parts) > 2 else 'Open'
+        networks.append({'ssid': ssid, 'signal': signal, 'security': security or 'Open'})
+    networks.sort(key=lambda n: n['signal'], reverse=True)
+    return {'networks': networks}
+
+
+def wifi_connect(ssid, password):
+    _nmcli_run('con', 'delete', ssid, timeout=5)
+    if password:
+        rc, out, err = _nmcli_run('dev', 'wifi', 'connect', ssid, 'password', password, timeout=30)
+    else:
+        rc, out, err = _nmcli_run('dev', 'wifi', 'connect', ssid, timeout=30)
+    if rc == 0:
+        st = wifi_get_status()
+        return {'status': 'connected', 'ssid': ssid, 'ip': st.get('ip', '')}
+    error_msg = err or out
+    if 'No network with SSID' in error_msg:
+        error_msg = 'Сеть не найдена. Выполните сканирование.'
+    elif 'Secrets were required' in error_msg or 'password' in error_msg.lower():
+        error_msg = 'Неверный пароль'
+    elif 'timeout' in error_msg.lower():
+        error_msg = 'Таймаут подключения'
+    return {'status': 'error', 'error': error_msg}
+
+
+def wifi_disconnect():
+    rc, out, err = _nmcli_run('dev', 'disconnect', 'wlan0', timeout=10)
+    if rc == 0:
+        return {'status': 'disconnected'}
+    rc2, _, _ = _nmcli_run('dev', 'disconnect', 'wlan1', timeout=10)
+    if rc2 == 0:
+        return {'status': 'disconnected'}
+    return {'status': 'error', 'error': err or out}
+
+
+def process_wifi_setup_bt(sock):
+    """Одноразовая установка NetworkManager через Bluetooth без SSH."""
+    import time as _t
+    import pwd
+    import os as _os
+
+    def send(msg):
+        log_msg('[WIFI_SETUP] ' + msg)
+        try:
+            sock.send((msg + '\n').encode())
+        except Exception:
+            pass
+
+    send('>>> WIFI_SETUP: начинаю установку NetworkManager...')
+
+    cmds = [
+        (['sudo', 'apt-get', 'update', '-y'],                       'apt-get update',            90),
+        (['sudo', 'apt-get', 'install', '-y', 'network-manager'],   'apt install network-manager', 180),
+        (['sudo', 'systemctl', 'enable', 'NetworkManager'],         'systemctl enable NM',       15),
+        (['sudo', 'systemctl', 'start',  'NetworkManager'],         'systemctl start NM',        15),
+    ]
+
+    for cmd, label, t_out in cmds:
+        send('>>> ' + label + '...')
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            for line in proc.stdout:
+                s = line.strip()
+                if s:
+                    send('  ' + s)
+            proc.wait(timeout=t_out)
+            send(('  [OK] ' if proc.returncode == 0 else '  [FAIL] ') + label)
+        except Exception as e:
+            send('  [ERROR] ' + str(e))
+
+    send('>>> Настройка sudoers для nmcli...')
+    try:
+        user = pwd.getpwuid(_os.getuid()).pw_name
+        entry = user + ' ALL=(ALL) NOPASSWD: /usr/bin/nmcli'
+        r = subprocess.run(
+            ['sudo', 'tee', '/etc/sudoers.d/ros-wifi'],
+            input=entry + '\n', capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            subprocess.run(['sudo', 'chmod', '440', '/etc/sudoers.d/ros-wifi'], timeout=5)
+            send("  [OK] sudoers: '" + user + "' может запускать nmcli без пароля")
+        else:
+            send('  [FAIL] ' + (r.stderr or r.stdout))
+    except Exception as e:
+        send('  [ERROR] sudoers: ' + str(e))
+
+    _t.sleep(2)
+    rc, out, _ = _nmcli_run('-v')
+    if rc == 0:
+        send('  [OK] nmcli: ' + out)
+        send('  WiFi: ' + json.dumps(wifi_get_status(), ensure_ascii=False))
+    else:
+        send('  [WARN] nmcli недоступен — выполните RESTART')
+
+    send('>>> Готово! Используйте: WIFI_SCAN -> WIFI_CONNECT')
+    send('DONE')
+
+
 def server_loop():
     global BT_STATUS, BT_CLIENT_INFO, BT_DEVICE_NAME, current_config
 
@@ -1357,6 +1505,40 @@ def server_loop():
                             threading.Thread(target=process_update_bt, args=(client_sock,), daemon=True).start()
                         else:
                             client_sock.send("Update already in progress\n".encode())
+                                        elif cmd_str == "WIFI_STATUS":
+                        log_msg("WIFI_STATUS requested via BT")
+                        result = wifi_get_status()
+                        client_sock.send((json.dumps(result) + "\n").encode())
+                    elif cmd_str == "WIFI_SCAN":
+                        log_msg("WIFI_SCAN requested via BT")
+                        threading.Thread(
+                            target=lambda: client_sock.send(
+                                (json.dumps(wifi_scan(), ensure_ascii=False) + "\n").encode()
+                            ), daemon=True
+                        ).start()
+                    elif cmd_str.startswith("WIFI_CONNECT:"):
+                        log_msg("WIFI_CONNECT requested via BT")
+                        payload = cmd_str[len("WIFI_CONNECT:"):]
+                        try:
+                            data = json.loads(payload)
+                            ssid = data.get("ssid", "")
+                            password = data.get("password", "")
+                            threading.Thread(
+                                target=lambda s=ssid, p=password: client_sock.send(
+                                    (json.dumps(wifi_connect(s, p), ensure_ascii=False) + "\n").encode()
+                                ), daemon=True
+                            ).start()
+                        except Exception as e:
+                            client_sock.send((json.dumps({"status": "error", "error": str(e)}) + "\n").encode())
+                    elif cmd_str == "WIFI_DISCONNECT":
+                        log_msg("WIFI_DISCONNECT requested via BT")
+                        result = wifi_disconnect()
+                        client_sock.send((json.dumps(result) + "\n").encode())
+                    elif cmd_str == "WIFI_SETUP":
+                        log_msg("WIFI_SETUP requested via BT")
+                        threading.Thread(
+                            target=process_wifi_setup_bt, args=(client_sock,), daemon=True
+                        ).start()
                     elif cmd_str == "RESTART":
                         log_msg("Restart requested via BT")
                         def do_reboot():

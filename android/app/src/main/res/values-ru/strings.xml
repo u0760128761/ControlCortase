@@ -26,12 +26,24 @@
     <string name="pin_spd">Скор</string>
     <string name="confirm_restart">Вы уверены, что хотите перезагрузить устройство?</string>
     <string name="hint_log">Лог...</string>
+    <!-- Типы драйверов -->
+    <string name="label_driver_type">Тип драйвера мотора</string>
+    <string name="label_pins_l298n">Пины L298N: IN1(Вперёд) | IN2(Назад) | ENA(Скорость)</string>
+    <string name="label_pins_bts7960">Пины BTS7960: RPWM | LPWM | R_EN | L_EN</string>
+    <string name="hint_pin_in1">IN1 (Вперёд)</string>
+    <string name="hint_pin_in2">IN2 (Назад)</string>
+    <string name="hint_pin_ena">ENA (Скорость)</string>
+    <string name="hint_pin_rpwm">RPWM (Вперёд)</string>
+    <string name="hint_pin_lpwm">LPWM (Назад)</string>
+    <string name="hint_pin_r_en">R_EN</string>
+    <string name="hint_pin_l_en">L_EN</string>
     <string name="error_bluetooth_not_supported">Bluetooth не поддерживается</string>
     <string name="error_connect_failed">Ошибка подключения</string>
     <!-- New Strings -->
     <string name="btn_language">Язык / Language / Idioma</string>
     <string name="label_recent_devices">История устройств</string>
     <string name="btn_docs">Документация</string>
+    <string name="btn_help">Справка (Документация)</string>
     <string name="msg_confirm_scan">Сканирование разорвет текущее соединение. Продолжить?</string>
     <string name="btn_yes">Да</string>
     <string name="btn_no">Нет</string>
