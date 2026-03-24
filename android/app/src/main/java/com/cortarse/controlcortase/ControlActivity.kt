@@ -66,6 +66,11 @@ class ControlActivity : AppCompatActivity() {
         updateLog("Control Activity Started")
         tvStatusHeader.text = getString(R.string.status_connected)
 
+    }
+
+    override fun onResume() {
+        super.onResume()
+        
         BluetoothManager.onConnectionFailed = {
             runOnUiThread {
                 if (!rebootOverlay.isVisible) {
@@ -77,7 +82,7 @@ class ControlActivity : AppCompatActivity() {
             }
         }
 
-        // Handle incoming data (logs during update)
+        // Reclaim data handler when returning from other activities (like ConfigActivity)
         BluetoothManager.onDataReceived = { data ->
             runOnUiThread {
                 if (isUpdating) {
@@ -101,7 +106,7 @@ class ControlActivity : AppCompatActivity() {
             }
         }
         
-        // Request initial config for labels
+        // Always request fresh config when screen becomes active
         BluetoothManager.sendCommand("GET_CONFIG")
     }
 
