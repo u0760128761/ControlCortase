@@ -49,6 +49,8 @@ class ControlActivity : AppCompatActivity() {
     private lateinit var tvM2Fwd: TextView
     private lateinit var tvM2Bwd: TextView
     private lateinit var tvM2En: TextView
+    private lateinit var tvM1Inv: TextView
+    private lateinit var tvM2Inv: TextView
 
     private var isUpdating = false
     private var isChangingLanguage = false
@@ -139,6 +141,8 @@ class ControlActivity : AppCompatActivity() {
         tvM2Fwd = findViewById(R.id.tv_m2_fwd)
         tvM2Bwd = findViewById(R.id.tv_m2_bwd)
         tvM2En = findViewById(R.id.tv_m2_en)
+        tvM1Inv = findViewById(R.id.tv_m1_inv)
+        tvM2Inv = findViewById(R.id.tv_m2_inv)
 
         rebootOverlay = findViewById(R.id.rebootOverlay)
     }
@@ -247,14 +251,22 @@ class ControlActivity : AppCompatActivity() {
                 val pins = dev.optJSONObject("pins") ?: continue
 
                 if (type == "motor") {
+                    val invert = dev.optBoolean("invert", false)
+                    val invertText = if (invert) "Yes" else "No"
+                    val invertColor = if (invert) android.graphics.Color.parseColor("#E53935") else getColor(R.color.colorPrimary)
+
                     if (role == "move_left") {
                         tvM1Fwd.text = pins.optInt("forward").toString()
                         tvM1Bwd.text = pins.optInt("backward").toString()
-                        tvM1En.text = pins.optInt("enable").toString()
+                        tvM1En.text = pins.optInt("enable").let { if (it > 0) it.toString() else "--" }
+                        tvM1Inv.text = invertText
+                        tvM1Inv.setTextColor(invertColor)
                     } else if (role == "move_right") {
                         tvM2Fwd.text = pins.optInt("forward").toString()
                         tvM2Bwd.text = pins.optInt("backward").toString()
-                        tvM2En.text = pins.optInt("enable").toString()
+                        tvM2En.text = pins.optInt("enable").let { if (it > 0) it.toString() else "--" }
+                        tvM2Inv.text = invertText
+                        tvM2Inv.setTextColor(invertColor)
                     }
                 }
             }

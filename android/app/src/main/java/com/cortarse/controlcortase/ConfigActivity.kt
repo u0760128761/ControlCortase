@@ -197,6 +197,22 @@ class ConfigActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // Role and Invert
+        val spinnerRole = pinsView.findViewById<Spinner>(R.id.spinnerRole)
+        val switchInvert = pinsView.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchInvert)
+
+        val roles = arrayOf("", "move_left", "move_right")
+        val displayRoles = arrayOf("None", "Left Motor", "Right Motor")
+        val adapter = ArrayAdapter(pinsView.context, android.R.layout.simple_spinner_item, displayRoles)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerRole.adapter = adapter
+
+        val currentRole = dev.optString("role")
+        val roleIndex = roles.indexOf(currentRole).takeIf { it >= 0 } ?: 0
+        spinnerRole.setSelection(roleIndex)
+
+        switchInvert.isChecked = dev.optBoolean("invert", false)
     }
 
     private fun showAddDeviceDialog() {
@@ -227,7 +243,6 @@ class ConfigActivity : AppCompatActivity() {
                 devJson.put("id", meta.getString("id"))
                 devJson.put("type", meta.getString("type"))
                 devJson.put("name", card.findViewById<EditText>(R.id.etDeviceName).text.toString())
-                if (meta.has("role")) devJson.put("role", meta.getString("role"))
 
                 val pins = JSONObject()
                 if (devJson.getString("type") == "motor") {
@@ -246,10 +261,16 @@ class ConfigActivity : AppCompatActivity() {
                         pins.put("l_en", pContainer.findViewById<EditText>(R.id.etBtsLen).text.toString().toIntOrNull() ?: 0)
                     } else {
                         // Сохраняем пины L298N
-                        pins.put("forward", pContainer.findViewById<EditText>(R.id.etPinFwd).text.toString().toInt())
-                        pins.put("backward", pContainer.findViewById<EditText>(R.id.etPinBwd).text.toString().toInt())
-                        pins.put("enable", pContainer.findViewById<EditText>(R.id.etPinSpd).text.toString().toInt())
+                        pins.put("forward", pContainer.findViewById<EditText>(R.id.etPinFwd).text.toString().toIntOrNull() ?: 0)
+                        pins.put("backward", pContainer.findViewById<EditText>(R.id.etPinBwd).text.toString().toIntOrNull() ?: 0)
+                        pins.put("enable", pContainer.findViewById<EditText>(R.id.etPinSpd).text.toString().toIntOrNull() ?: 0)
                     }
+
+                    val spinnerRole = pContainer.findViewById<Spinner>(R.id.spinnerRole)
+                    val switchInvert = pContainer.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchInvert)
+                    val roles = arrayOf("", "move_left", "move_right")
+                    devJson.put("role", roles[spinnerRole.selectedItemPosition])
+                    devJson.put("invert", switchInvert.isChecked)
                 } else if (devJson.getString("type") == "hcsr04") {
                     val pContainer = card.findViewById<ViewGroup>(R.id.llPinsContainer)
                     pins.put("trigger", pContainer.findViewById<EditText>(R.id.etPinTrig).text.toString().toInt())

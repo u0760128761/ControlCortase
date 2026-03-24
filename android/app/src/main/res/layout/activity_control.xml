@@ -238,6 +238,24 @@
                         android:text="--"
                         android:textColor="@color/colorPrimary"
                         android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="12dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Inv:"
+                        android:textColor="@color/colorOnSurfaceVariant"
+                        android:textSize="12sp"
+                        android:layout_marginEnd="4dp"/>
+
+                    <TextView
+                        android:id="@+id/tv_m1_inv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--"
+                        android:textColor="@color/colorPrimary"
+                        android:textSize="12sp"
                         android:textStyle="bold"/>
                 </LinearLayout>
 
@@ -301,6 +319,24 @@
 
                     <TextView
                         android:id="@+id/tv_m2_en"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--"
+                        android:textColor="@color/colorPrimary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="12dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Inv:"
+                        android:textColor="@color/colorOnSurfaceVariant"
+                        android:textSize="12sp"
+                        android:layout_marginEnd="4dp"/>
+
+                    <TextView
+                        android:id="@+id/tv_m2_inv"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="--"

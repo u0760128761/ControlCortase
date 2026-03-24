@@ -90,4 +90,5 @@
     <string name="wifi_password_required">Se requiere contraseña</string>
     <string name="wifi_disconnect_confirm">¿Desconectar de la red WiFi?</string>
     <string name="wifi_disconnected">Desconectado de WiFi</string>
+    <string name="label_invert">Invertir</string>
 </resources>
