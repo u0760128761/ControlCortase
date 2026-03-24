@@ -8,23 +8,32 @@ from gpiozero import DistanceSensor, DigitalOutputDevice, PWMOutputDevice
 import json
 
 class CustomMotor:
-    def __init__(self, forward, backward, enable):
+    def __init__(self, forward, backward, enable, invert=False):
         self.fwd = DigitalOutputDevice(forward)
         self.bwd = DigitalOutputDevice(backward)
         self.en = PWMOutputDevice(enable)
         self._value = 0.0
+        self.invert = invert
 
     def forward(self, speed):
-        self.fwd.on()
-        self.bwd.off()
+        if self.invert:
+            self.fwd.off()
+            self.bwd.on()
+        else:
+            self.fwd.on()
+            self.bwd.off()
         self.en.value = float(speed)
-        self._value = float(speed)
+        self._value = float(speed) if not self.invert else -float(speed)
 
     def backward(self, speed):
-        self.fwd.off()
-        self.bwd.on()
+        if self.invert:
+            self.fwd.on()
+            self.bwd.off()
+        else:
+            self.fwd.off()
+            self.bwd.on()
         self.en.value = float(speed)
-        self._value = -float(speed)
+        self._value = -float(speed) if not self.invert else float(speed)
 
     def stop(self):
         self.fwd.off()
@@ -164,7 +173,8 @@ def init_peripherals():
             p_obj = None
             
             if dtype == "motor":
-                p_obj = CustomMotor(forward=pins["forward"], backward=pins["backward"], enable=pins["enable"])
+                invert_flag = dev.get("invert", False)
+                p_obj = CustomMotor(forward=pins["forward"], backward=pins["backward"], enable=pins["enable"], invert=invert_flag)
             elif dtype == "hcsr04":
                 p_obj = DistanceSensor(trigger=pins["trigger"], echo=pins["echo"])
             
@@ -731,6 +741,10 @@ HTML_TEMPLATE = """
                             <option value="move_right" {% if dev.role == 'move_right' %}selected{% endif %}>Правый мотор</option>
                         </select>
                     </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_invert">Инверсия</span>
+                        <input type="checkbox" class="config-invert-input" {% if dev.invert %}checked{% endif %}>
+                    </div>
                     {% elif dev.type == 'hcsr04' %}
                     <div class="config-row">
                         <span class="config-label">Trigger</span>
@@ -817,6 +831,8 @@ HTML_TEMPLATE = """
                 pin_fwd: "Вперед",
                 pin_bwd: "Назад",
                 pin_spd: "Скорость",
+                pin_role: "Роль",
+                pin_invert: "Инверсия",
                 tab_config: "Конфигурация",
                 tab_config_sensor: "Датчик HC-SR04",
                 btn_scan: "Сканировать HC-SR04",
@@ -848,6 +864,8 @@ HTML_TEMPLATE = """
                 pin_fwd: "Fwd",
                 pin_bwd: "Bwd",
                 pin_spd: "Spd",
+                pin_role: "Role",
+                pin_invert: "Invert",
                 tab_config: "Configuration",
                 tab_config_sensor: "HC-SR04 Sensor",
                 btn_scan: "Scan HC-SR04",
@@ -879,6 +897,8 @@ HTML_TEMPLATE = """
                 pin_fwd: "Avance",
                 pin_bwd: "Retro",
                 pin_spd: "Veloc",
+                pin_role: "Rol",
+                pin_invert: "Invertir",
                 tab_config: "Configuración",
                 tab_config_sensor: "Sensor HC-SR04",
                 btn_scan: "Escanear HC-SR04",
@@ -1043,6 +1063,10 @@ HTML_TEMPLATE = """
                             <option value="move_right">Right Motor</option>
                         </select>
                     </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_invert">Invert</span>
+                        <input type="checkbox" class="config-invert-input">
+                    </div>
                 `;
             } else {
                 pinsHtml = `
@@ -1107,6 +1131,11 @@ HTML_TEMPLATE = """
                 const roleSelect = card.querySelector('.config-role');
                 if (roleSelect && roleSelect.value) {
                     dev.role = roleSelect.value;
+                }
+
+                const invertCheckbox = card.querySelector('.config-invert-input');
+                if (invertCheckbox) {
+                    dev.invert = invertCheckbox.checked;
                 }
 
                 devices.push(dev);
@@ -1233,9 +1262,11 @@ def process_movement_cmd(cmd):
         set_motor(1, "BACKWARD")
         set_motor(2, "BACKWARD")
     elif cmd == "LEFT":
+        # Tank turn left
         set_motor(1, "BACKWARD")
         set_motor(2, "FORWARD")
     elif cmd == "RIGHT":
+        # Tank turn right
         set_motor(1, "FORWARD")
         set_motor(2, "BACKWARD")
     elif cmd == "STOP":
