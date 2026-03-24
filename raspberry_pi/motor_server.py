@@ -785,9 +785,7 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- Admin Tab Removed and moved to Header Dropdown -->
 
-        <!-- Maps Tab -->
         <div id="maps" class="tab-content">
             <div class="card">
                 <div class="placeholder-text">
