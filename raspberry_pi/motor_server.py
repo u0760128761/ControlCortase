@@ -11,7 +11,11 @@ class CustomMotor:
     def __init__(self, forward, backward, enable, invert=False):
         self.fwd = DigitalOutputDevice(forward)
         self.bwd = DigitalOutputDevice(backward)
-        self.en = PWMOutputDevice(enable)
+        try:
+            pin_val = int(enable)
+            self.en = PWMOutputDevice(pin_val) if pin_val > 0 else None
+        except (TypeError, ValueError):
+            self.en = None
         self._value = 0.0
         self.invert = invert
 
@@ -22,7 +26,7 @@ class CustomMotor:
         else:
             self.fwd.on()
             self.bwd.off()
-        self.en.value = float(speed)
+        if self.en: self.en.value = float(speed)
         self._value = float(speed) if not self.invert else -float(speed)
 
     def backward(self, speed):
@@ -32,23 +36,24 @@ class CustomMotor:
         else:
             self.fwd.off()
             self.bwd.on()
-        self.en.value = float(speed)
+        if self.en: self.en.value = float(speed)
         self._value = -float(speed) if not self.invert else float(speed)
 
     def stop(self):
         self.fwd.off()
         self.bwd.off()
-        self.en.value = 0.0
+        if self.en: self.en.value = 0.0
         self._value = 0.0
 
     def close(self):
         self.fwd.close()
         self.bwd.close()
-        self.en.close()
+        if self.en: self.en.close()
 
     @property
     def is_active(self):
-        return self.en.value > 0
+        if self.en: return self.en.value > 0
+        return self.fwd.value or self.bwd.value
 
     @property
     def value(self):
@@ -731,7 +736,7 @@ HTML_TEMPLATE = """
                     </div>
                     <div class="config-row">
                         <span class="config-label" data-t="pin_spd">Скорость</span>
-                        <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable }}">
+                        <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable if dev.pins.enable else '' }}">
                     </div>
                     <div class="config-row">
                         <span class="config-label" data-t="pin_role">Роль</span>
@@ -1124,7 +1129,8 @@ HTML_TEMPLATE = """
                     pins: {}
                 };
                 card.querySelectorAll('.config-input').forEach(input => {
-                    dev.pins[input.dataset.pin] = parseInt(input.value);
+                    const val = input.value;
+                    dev.pins[input.dataset.pin] = val ? parseInt(val) : 0;
                 });
                 
                 // Read role from dropdown if it exists
