@@ -4,8 +4,56 @@ import subprocess
 import os
 import queue
 from flask import Flask, render_template_string, request, redirect, url_for, Response, jsonify
-from gpiozero import Motor, DistanceSensor
+from gpiozero import DistanceSensor, DigitalOutputDevice, PWMOutputDevice
 import json
+
+class CustomMotor:
+    def __init__(self, forward, backward, enable):
+        self.fwd = DigitalOutputDevice(forward)
+        self.bwd = DigitalOutputDevice(backward)
+        self.en = PWMOutputDevice(enable)
+        self._value = 0.0
+
+    def forward(self, speed):
+        self.fwd.on()
+        self.bwd.off()
+        self.en.value = float(speed)
+        self._value = float(speed)
+
+    def backward(self, speed):
+        self.fwd.off()
+        self.bwd.on()
+        self.en.value = float(speed)
+        self._value = -float(speed)
+
+    def stop(self):
+        self.fwd.off()
+        self.bwd.off()
+        self.en.value = 0.0
+        self._value = 0.0
+
+    def close(self):
+        self.fwd.close()
+        self.bwd.close()
+        self.en.close()
+
+    @property
+    def is_active(self):
+        return self.en.value > 0
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, v):
+        if v > 0:
+            self.forward(v)
+        elif v < 0:
+            self.backward(abs(v))
+        else:
+            self.stop()
+
 
 # --- Global Logging ---
 class LogManager:
@@ -116,7 +164,7 @@ def init_peripherals():
             p_obj = None
             
             if dtype == "motor":
-                p_obj = Motor(forward=pins["forward"], backward=pins["backward"], enable=pins["enable"])
+                p_obj = CustomMotor(forward=pins["forward"], backward=pins["backward"], enable=pins["enable"])
             elif dtype == "hcsr04":
                 p_obj = DistanceSensor(trigger=pins["trigger"], echo=pins["echo"])
             
@@ -675,6 +723,14 @@ HTML_TEMPLATE = """
                         <span class="config-label" data-t="pin_spd">Скорость</span>
                         <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable }}">
                     </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_role">Роль</span>
+                        <select class="config-role">
+                            <option value="">Нет (None)</option>
+                            <option value="move_left" {% if dev.role == 'move_left' %}selected{% endif %}>Левый мотор</option>
+                            <option value="move_right" {% if dev.role == 'move_right' %}selected{% endif %}>Правый мотор</option>
+                        </select>
+                    </div>
                     {% elif dev.type == 'hcsr04' %}
                     <div class="config-row">
                         <span class="config-label">Trigger</span>
@@ -686,12 +742,6 @@ HTML_TEMPLATE = """
                     </div>
                     <button class="btn-scan" onclick="scanHCSR04('{{ dev.id }}')" data-t="btn_scan">Сканировать HC-SR04</button>
                     <div id="scanResult_{{ dev.id }}" class="scan-result"></div>
-                    {% endif %}
-
-                    {% if dev.role %}
-                    <div style="margin-top: 10px; font-size: 0.7rem; color: var(--text-sub);">
-                        Role: <strong>{{ dev.role }}</strong>
-                    </div>
                     {% endif %}
                 </div>
                 {% endfor %}
@@ -982,9 +1032,17 @@ HTML_TEMPLATE = """
             let pinsHtml = "";
             if (type === 'motor') {
                 pinsHtml = `
-                    <div class="config-row"><span class="config-label">Fwd</span><input type="number" class="config-input" data-pin="forward" value="0"></div>
-                    <div class="config-row"><span class="config-label">Bwd</span><input type="number" class="config-input" data-pin="backward" value="0"></div>
-                    <div class="config-row"><span class="config-label">Spd</span><input type="number" class="config-input" data-pin="enable" value="0"></div>
+                    <div class="config-row"><span class="config-label" data-t="pin_fwd">Fwd</span><input type="number" class="config-input" data-pin="forward" value="0"></div>
+                    <div class="config-row"><span class="config-label" data-t="pin_bwd">Bwd</span><input type="number" class="config-input" data-pin="backward" value="0"></div>
+                    <div class="config-row"><span class="config-label" data-t="pin_spd">Spd</span><input type="number" class="config-input" data-pin="enable" value="0"></div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_role">Role</span>
+                        <select class="config-role">
+                            <option value="">None</option>
+                            <option value="move_left">Left Motor</option>
+                            <option value="move_right">Right Motor</option>
+                        </select>
+                    </div>
                 `;
             } else {
                 pinsHtml = `
@@ -1045,9 +1103,11 @@ HTML_TEMPLATE = """
                     dev.pins[input.dataset.pin] = parseInt(input.value);
                 });
                 
-                // Preserve roles if they exist
-                const roleEl = card.querySelector('strong');
-                if (roleEl) dev.role = roleEl.textContent;
+                // Read role from dropdown if it exists
+                const roleSelect = card.querySelector('.config-role');
+                if (roleSelect && roleSelect.value) {
+                    dev.role = roleSelect.value;
+                }
 
                 devices.push(dev);
             });
@@ -1494,7 +1554,7 @@ def server_loop():
                             current_speed = map_speed(val)
                             # Re-apply current speed to active motors
                             for p in peripherals.values():
-                                if isinstance(p, Motor) and p.is_active:
+                                if isinstance(p, CustomMotor) and p.is_active:
                                     p.value = (p.value / abs(p.value)) * current_speed if p.value != 0 else 0
                             log_msg(f"Speed set to {current_speed*100}%")
                         except ValueError:
@@ -1505,7 +1565,7 @@ def server_loop():
                             threading.Thread(target=process_update_bt, args=(client_sock,), daemon=True).start()
                         else:
                             client_sock.send("Update already in progress\n".encode())
-                                        elif cmd_str == "WIFI_STATUS":
+                    elif cmd_str == "WIFI_STATUS":
                         log_msg("WIFI_STATUS requested via BT")
                         result = wifi_get_status()
                         client_sock.send((json.dumps(result) + "\n").encode())
