@@ -1267,12 +1267,12 @@ def process_movement_cmd(cmd):
         set_motor(2, "BACKWARD")
     elif cmd == "LEFT":
         # Tank turn left
-        set_motor(1, "BACKWARD")
-        set_motor(2, "FORWARD")
-    elif cmd == "RIGHT":
-        # Tank turn right
         set_motor(1, "FORWARD")
         set_motor(2, "BACKWARD")
+    elif cmd == "RIGHT":
+        # Tank turn right
+        set_motor(1, "BACKWARD")
+        set_motor(2, "FORWARD")
     elif cmd == "STOP":
         set_motor(1, "STOP")
         set_motor(2, "STOP")
