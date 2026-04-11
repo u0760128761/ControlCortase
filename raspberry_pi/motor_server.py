@@ -237,25 +237,33 @@ def init_peripherals():
     for dev in current_config.get("devices", []):
         try:
             dtype = dev.get("type")
+            driver_type = dev.get("driver_type", "").lower()  # Android sends this
             pins = dev.get("pins", {})
+            invert_flag = dev.get("invert", False)
             p_obj = None
 
-            if dtype == "motor":
-                invert_flag = dev.get("invert", False)
-                p_obj = CustomMotor(forward=pins["forward"], backward=pins["backward"], enable=pins.get("enable", 0), invert=invert_flag)
-            elif dtype == "bts7960":
-                invert_flag = dev.get("invert", False)
+            # Support two equivalent schemes:
+            #  1) Web UI legacy:  type="bts7960"
+            #  2) Android / new:  type="motor", driver_type="bts7960"
+            is_bts = dtype == "bts7960" or (dtype == "motor" and driver_type == "bts7960")
+            is_l298n = dtype == "motor" and not is_bts
+
+            if is_bts:
                 p_obj = BTS7960Motor(rpwm=pins["rpwm"], lpwm=pins["lpwm"], invert=invert_flag)
+                log_msg(f"Peripheral initialized: {dev.get('name')} (BTS7960) RPWM={pins.get('rpwm')} LPWM={pins.get('lpwm')}")
+            elif is_l298n:
+                p_obj = CustomMotor(forward=pins["forward"], backward=pins["backward"], enable=pins.get("enable"), invert=invert_flag)
+                log_msg(f"Peripheral initialized: {dev.get('name')} (L298N) FWD={pins.get('forward')} BWD={pins.get('backward')}")
             elif dtype == "hcsr04":
                 p_obj = DistanceSensor(trigger=pins["trigger"], echo=pins["echo"])
+                log_msg(f"Peripheral initialized: {dev.get('name')} (HC-SR04)")
 
             if p_obj:
                 peripherals[dev["id"]] = p_obj
                 if dev.get("role"):
                     peripherals[dev["role"]] = p_obj
-                log_msg(f"Peripheral initialized: {dev['name']} ({dev['id']}) type={dtype}")
         except Exception as e:
-            log_msg(f"Error initializing device {dev.get('name')} (type={dev.get('type')}): {e}")
+            log_msg(f"Error initializing device {dev.get('name')} (type={dev.get('type')} driver={dev.get('driver_type','')}): {e}")
 
 init_peripherals()
 
@@ -595,7 +603,22 @@ HTML_TEMPLATE = """
         .config-name-input:focus { outline: none; border-bottom: 1px solid var(--primary); }
         .btn-delete { color: var(--danger); cursor: pointer; font-size: 1.2rem; opacity: 0.6; transition: 0.2s; }
         .btn-delete:hover { opacity: 1; }
-        
+
+        /* Driver type toggle */
+        .driver-toggle { display: flex; gap: 8px; }
+        .driver-opt {
+            display: flex; align-items: center; gap: 4px;
+            padding: 4px 12px; border-radius: 20px; cursor: pointer;
+            font-size: 0.8rem; font-weight: 600;
+            border: 2px solid #e0e0e0; color: var(--text-sub);
+            transition: 0.2s; user-select: none;
+        }
+        .driver-opt input[type=radio] { display: none; }
+        .driver-opt.active, .driver-opt:has(input:checked) {
+            border-color: var(--primary-dark); color: var(--primary-dark);
+            background: rgba(0,172,193,0.08);
+        }
+
         .btn-add { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; }
         
         .role-badge { 
@@ -800,39 +823,46 @@ HTML_TEMPLATE = """
                     </div>
                     
                     {% if dev.type == 'motor' %}
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_fwd">Вперед</span>
-                        <input type="number" class="config-input" data-pin="forward" value="{{ dev.pins.forward }}">
+                    {% set is_bts = dev.driver_type == 'bts7960' %}
+                    <div class="config-row" style="margin-bottom:10px;">
+                        <span class="config-label">Драйвер</span>
+                        <div class="driver-toggle">
+                            <label class="driver-opt {{ '' if is_bts else 'active' }}">
+                                <input type="radio" class="config-driver-type" name="drv_{{ dev.id }}"
+                                    value="l298n" {{ '' if is_bts else 'checked' }}
+                                    onchange="toggleDriver(this)"> L298N
+                            </label>
+                            <label class="driver-opt {{ 'active' if is_bts else '' }}">
+                                <input type="radio" class="config-driver-type" name="drv_{{ dev.id }}"
+                                    value="bts7960" {{ 'checked' if is_bts else '' }}
+                                    onchange="toggleDriver(this)"> BTS7960
+                            </label>
+                        </div>
                     </div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_bwd">Назад</span>
-                        <input type="number" class="config-input" data-pin="backward" value="{{ dev.pins.backward }}">
+                    <div class="pins-l298n" style="display:{{ 'none' if is_bts else 'block' }};">
+                        <div class="config-row">
+                            <span class="config-label">Вперед</span>
+                            <input type="number" class="config-input" data-pin="forward" value="{{ dev.pins.forward if not is_bts else '' }}">
+                        </div>
+                        <div class="config-row">
+                            <span class="config-label">Назад</span>
+                            <input type="number" class="config-input" data-pin="backward" value="{{ dev.pins.backward if not is_bts else '' }}">
+                        </div>
+                        <div class="config-row">
+                            <span class="config-label">EN (опц.)</span>
+                            <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable if (not is_bts and dev.pins.enable) else '' }}" placeholder="(не подключён)">
+                        </div>
                     </div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_spd">Скорость (EN)</span>
-                        <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable if dev.pins.enable else '' }}" placeholder="(опционально)">
-                    </div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_role">Роль</span>
-                        <select class="config-role">
-                            <option value="">Нет (None)</option>
-                            <option value="move_left" {% if dev.role == 'move_left' %}selected{% endif %}>Левый мотор</option>
-                            <option value="move_right" {% if dev.role == 'move_right' %}selected{% endif %}>Правый мотор</option>
-                        </select>
-                    </div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_invert">Инверсия</span>
-                        <input type="checkbox" class="config-invert-input" {% if dev.invert %}checked{% endif %}>
-                    </div>
-                    {% elif dev.type == 'bts7960' %}
-                    <div style="font-size:0.72rem;color:#0097a7;font-weight:bold;margin-bottom:8px;">🔧 BTS7960 — RPWM/LPWM режим</div>
-                    <div class="config-row">
-                        <span class="config-label">RPWM (Вперёд)</span>
-                        <input type="number" class="config-input" data-pin="rpwm" value="{{ dev.pins.rpwm }}">
-                    </div>
-                    <div class="config-row">
-                        <span class="config-label">LPWM (Назад)</span>
-                        <input type="number" class="config-input" data-pin="lpwm" value="{{ dev.pins.lpwm }}">
+                    <div class="pins-bts7960" style="display:{{ 'block' if is_bts else 'none' }};">
+                        <div style="font-size:0.72rem;color:#0097a7;font-weight:bold;margin-bottom:6px;">🔧 RPWM/LPWM — R_EN/L_EN подключены к 5V</div>
+                        <div class="config-row">
+                            <span class="config-label">RPWM (→)</span>
+                            <input type="number" class="config-input" data-pin="rpwm" value="{{ dev.pins.rpwm if is_bts else '' }}">
+                        </div>
+                        <div class="config-row">
+                            <span class="config-label">LPWM (←)</span>
+                            <input type="number" class="config-input" data-pin="lpwm" value="{{ dev.pins.lpwm if is_bts else '' }}">
+                        </div>
                     </div>
                     <div class="config-row">
                         <span class="config-label" data-t="pin_role">Роль</span>
@@ -864,8 +894,7 @@ HTML_TEMPLATE = """
 
             <div class="add-device-section">
                 <select id="catalogSelect" class="catalog-select">
-                    <option value="motor">New Motor (L298N/обычный)</option>
-                    <option value="bts7960">New BTS7960 Motor</option>
+                    <option value="motor">New Motor</option>
                     <option value="hcsr04">New HC-SR04 Sensor</option>
                 </select>
                 <button class="btn-add" onclick="addDevice()">+ Add Device</button>
@@ -1138,17 +1167,25 @@ HTML_TEMPLATE = """
             startRefresh(parseInt(val));
         }
 
+        function toggleDriver(radio) {
+            const card = radio.closest('.config-card');
+            const isBts = radio.value === 'bts7960';
+            card.querySelector('.pins-l298n').style.display = isBts ? 'none' : 'block';
+            card.querySelector('.pins-bts7960').style.display = isBts ? 'block' : 'none';
+            // Update active label style
+            card.querySelectorAll('.driver-opt').forEach(label => {
+                label.classList.toggle('active', label.querySelector('input').checked);
+            });
+        }
+
         function addDevice() {
             const type = document.getElementById('catalogSelect').value;
             const id = "dev_" + Math.random().toString(36).substr(2, 5);
-            const nameMap = { motor: 'New Motor', bts7960: 'New BTS7960 Motor', hcsr04: 'New Sensor' };
-            const name = nameMap[type] || 'New Device';
-
             const grid = document.getElementById('configGrid');
             const card = document.createElement('div');
             card.className = "config-card";
             card.dataset.id = id;
-            card.dataset.type = type;
+            card.dataset.type = type === 'bts7960' ? 'motor' : type; // normalize
 
             const roleOptions = `
                 <select class="config-role">
@@ -1158,36 +1195,55 @@ HTML_TEMPLATE = """
                 </select>`;
 
             let pinsHtml = "";
-            if (type === 'motor') {
+            if (type === 'motor' || type === 'bts7960') {
+                const name = type === 'bts7960' ? 'New BTS7960 Motor' : 'New Motor';
+                const initBts = type === 'bts7960';
                 pinsHtml = `
-                    <div class="config-row"><span class="config-label">Вперед</span><input type="number" class="config-input" data-pin="forward" value="0"></div>
-                    <div class="config-row"><span class="config-label">Назад</span><input type="number" class="config-input" data-pin="backward" value="0"></div>
-                    <div class="config-row"><span class="config-label">Скорость (EN)</span><input type="number" class="config-input" data-pin="enable" value="" placeholder="(опционально)"></div>
+                    <div class="config-row" style="margin-bottom:10px;">
+                        <span class="config-label">Драйвер</span>
+                        <div class="driver-toggle">
+                            <label class="driver-opt ${!initBts ? 'active' : ''}">
+                                <input type="radio" class="config-driver-type" name="drv_${id}"
+                                    value="l298n" ${!initBts ? 'checked' : ''}
+                                    onchange="toggleDriver(this)"> L298N
+                            </label>
+                            <label class="driver-opt ${initBts ? 'active' : ''}">
+                                <input type="radio" class="config-driver-type" name="drv_${id}"
+                                    value="bts7960" ${initBts ? 'checked' : ''}
+                                    onchange="toggleDriver(this)"> BTS7960
+                            </label>
+                        </div>
+                    </div>
+                    <div class="pins-l298n" style="display:${initBts ? 'none' : 'block'};">
+                        <div class="config-row"><span class="config-label">Вперед</span><input type="number" class="config-input" data-pin="forward" value=""></div>
+                        <div class="config-row"><span class="config-label">Назад</span><input type="number" class="config-input" data-pin="backward" value=""></div>
+                        <div class="config-row"><span class="config-label">EN (опц.)</span><input type="number" class="config-input" data-pin="enable" value="" placeholder="(не подключён)"></div>
+                    </div>
+                    <div class="pins-bts7960" style="display:${initBts ? 'block' : 'none'};">
+                        <div style="font-size:0.72rem;color:#0097a7;font-weight:bold;margin-bottom:6px;">🔧 RPWM/LPWM — R_EN/L_EN подключены к 5V</div>
+                        <div class="config-row"><span class="config-label">RPWM (→)</span><input type="number" class="config-input" data-pin="rpwm" value=""></div>
+                        <div class="config-row"><span class="config-label">LPWM (←)</span><input type="number" class="config-input" data-pin="lpwm" value=""></div>
+                    </div>
                     <div class="config-row"><span class="config-label">Роль</span>${roleOptions}</div>
                     <div class="config-row"><span class="config-label">Инверсия</span><input type="checkbox" class="config-invert-input"></div>
                 `;
-            } else if (type === 'bts7960') {
-                pinsHtml = `
-                    <div style="font-size:0.72rem;color:#0097a7;font-weight:bold;margin-bottom:8px;">🔧 BTS7960 — RPWM/LPWM режим</div>
-                    <div class="config-row"><span class="config-label">RPWM (Вперёд)</span><input type="number" class="config-input" data-pin="rpwm" value="0"></div>
-                    <div class="config-row"><span class="config-label">LPWM (Назад)</span><input type="number" class="config-input" data-pin="lpwm" value="0"></div>
-                    <div class="config-row"><span class="config-label">Роль</span>${roleOptions}</div>
-                    <div class="config-row"><span class="config-label">Инверсия</span><input type="checkbox" class="config-invert-input"></div>
+                card.innerHTML = `
+                    <div class="config-card-header">
+                        <input type="text" class="config-name-input" value="${name}">
+                        <span class="btn-delete" onclick="deleteDevice('${id}')">&times;</span>
+                    </div>
+                    ${pinsHtml}
                 `;
-            } else {
-                pinsHtml = `
-                    <div class="config-row"><span class="config-label">Trig</span><input type="number" class="config-input" data-pin="trigger" value="0"></div>
-                    <div class="config-row"><span class="config-label">Echo</span><input type="number" class="config-input" data-pin="echo" value="0"></div>
+            } else { // hcsr04
+                card.innerHTML = `
+                    <div class="config-card-header">
+                        <input type="text" class="config-name-input" value="New Sensor">
+                        <span class="btn-delete" onclick="deleteDevice('${id}')">&times;</span>
+                    </div>
+                    <div class="config-row"><span class="config-label">Trig</span><input type="number" class="config-input" data-pin="trigger" value=""></div>
+                    <div class="config-row"><span class="config-label">Echo</span><input type="number" class="config-input" data-pin="echo" value=""></div>
                 `;
             }
-
-            card.innerHTML = `
-                <div class="config-card-header">
-                    <input type="text" class="config-name-input" value="${name}">
-                    <span class="btn-delete" onclick="deleteDevice('${id}')">&times;</span>
-                </div>
-                ${pinsHtml}
-            `;
             grid.appendChild(card);
         }
 
@@ -1223,32 +1279,44 @@ HTML_TEMPLATE = """
         function saveConfig() {
             const devices = [];
             document.querySelectorAll('.config-card').forEach(card => {
+                const type = card.dataset.type; // 'motor' or 'hcsr04'
                 const dev = {
                     id: card.dataset.id,
-                    type: card.dataset.type,
+                    type: type,
                     name: card.querySelector('.config-name-input').value,
                     pins: {}
                 };
-                card.querySelectorAll('.config-input').forEach(input => {
-                    const pin = input.dataset.pin;
-                    const val = input.value.trim();
-                    // For 'enable' pin: empty means "not connected" -> store null
-                    if (pin === 'enable') {
-                        dev.pins[pin] = val ? parseInt(val) : null;
+
+                if (type === 'motor') {
+                    // Determine driver type from radio
+                    const driverRadio = card.querySelector('.config-driver-type:checked');
+                    const driverType = driverRadio ? driverRadio.value : 'l298n';
+                    dev.driver_type = driverType;
+
+                    if (driverType === 'bts7960') {
+                        const rpwm = card.querySelector('[data-pin="rpwm"]');
+                        const lpwm = card.querySelector('[data-pin="lpwm"]');
+                        dev.pins.rpwm = rpwm ? (parseInt(rpwm.value) || 0) : 0;
+                        dev.pins.lpwm = lpwm ? (parseInt(lpwm.value) || 0) : 0;
                     } else {
-                        dev.pins[pin] = val ? parseInt(val) : 0;
+                        const fwd = card.querySelector('[data-pin="forward"]');
+                        const bwd = card.querySelector('[data-pin="backward"]');
+                        const en  = card.querySelector('[data-pin="enable"]');
+                        dev.pins.forward  = fwd ? (parseInt(fwd.value) || 0) : 0;
+                        dev.pins.backward = bwd ? (parseInt(bwd.value) || 0) : 0;
+                        dev.pins.enable   = en && en.value.trim() ? parseInt(en.value) : null;
                     }
-                });
 
-                // Read role from dropdown if it exists
-                const roleSelect = card.querySelector('.config-role');
-                if (roleSelect && roleSelect.value) {
-                    dev.role = roleSelect.value;
-                }
+                    const roleSelect = card.querySelector('.config-role');
+                    if (roleSelect && roleSelect.value) dev.role = roleSelect.value;
+                    const invertCb = card.querySelector('.config-invert-input');
+                    if (invertCb) dev.invert = invertCb.checked;
 
-                const invertCheckbox = card.querySelector('.config-invert-input');
-                if (invertCheckbox) {
-                    dev.invert = invertCheckbox.checked;
+                } else { // hcsr04
+                    const trig = card.querySelector('[data-pin="trigger"]');
+                    const echo = card.querySelector('[data-pin="echo"]');
+                    dev.pins.trigger = trig ? (parseInt(trig.value) || 0) : 0;
+                    dev.pins.echo    = echo ? (parseInt(echo.value) || 0) : 0;
                 }
 
                 devices.push(dev);
@@ -1270,6 +1338,7 @@ HTML_TEMPLATE = """
                 }
             });
         }
+
 
         window.onload = () => {
             applyTranslations();
@@ -1317,9 +1386,21 @@ def get_config():
 def api_save_config():
     global current_config
     new_config = request.json
+
+    # Normalize: Web UI may send type="bts7960" as a standalone type.
+    # Convert to the canonical form: type="motor", driver_type="bts7960"
+    # so that both Web UI and Android produce the same config.json schema.
+    for dev in new_config.get("devices", []):
+        if dev.get("type") == "bts7960":
+            dev["type"] = "motor"
+            dev["driver_type"] = "bts7960"
+        elif dev.get("type") == "motor" and "driver_type" not in dev:
+            dev["driver_type"] = "l298n"
+
     save_config(new_config)
     current_config = new_config
     init_peripherals()
+    log_msg(f"Config saved via Web UI: {len(new_config.get('devices', []))} device(s)")
     return jsonify({"status": "success"})
 
 @app.route('/config/scan', methods=['POST'])
@@ -1764,11 +1845,20 @@ def server_loop():
                         try:
                             config_json = cmd_str.split("SAVE_CONFIG:")[1]
                             new_config = json.loads(config_json)
+
+                            # Normalize driver types (same logic as Web UI save)
+                            for dev in new_config.get("devices", []):
+                                if dev.get("type") == "bts7960":
+                                    dev["type"] = "motor"
+                                    dev["driver_type"] = "bts7960"
+                                elif dev.get("type") == "motor" and "driver_type" not in dev:
+                                    dev["driver_type"] = "l298n"
+
                             save_config(new_config)
                             current_config = new_config
                             init_peripherals()
                             client_sock.send("CONFIG_SAVED\n".encode())
-                            log_msg("Config saved and peripherals re-initialized")
+                            log_msg("Config saved via BT and peripherals re-initialized")
                         except Exception as e:
                             client_sock.send(f"ERROR_SAVING_CONFIG:{e}\n".encode())
                     elif cmd_str == "SCAN_CONFIG":
