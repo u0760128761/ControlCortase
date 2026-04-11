@@ -7,7 +7,9 @@ from flask import Flask, render_template_string, request, redirect, url_for, Res
 from gpiozero import DistanceSensor, DigitalOutputDevice, PWMOutputDevice
 import json
 
+
 class CustomMotor:
+    """Standard H-bridge motor driver (L298N etc): separate forward/backward digital pins + optional PWM enable."""
     def __init__(self, forward, backward, enable, invert=False):
         self.fwd = DigitalOutputDevice(forward)
         self.bwd = DigitalOutputDevice(backward)
@@ -54,6 +56,66 @@ class CustomMotor:
     def is_active(self):
         if self.en: return self.en.value > 0
         return self.fwd.value or self.bwd.value
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, v):
+        if v > 0:
+            self.forward(v)
+        elif v < 0:
+            self.backward(abs(v))
+        else:
+            self.stop()
+
+
+class BTS7960Motor:
+    """
+    BTS7960 half-bridge motor driver.
+    RPWM pin controls forward direction (PWM duty = speed).
+    LPWM pin controls backward direction (PWM duty = speed).
+    R_EN / L_EN are wired directly to 5V, so no software enable needed.
+    """
+    def __init__(self, rpwm, lpwm, invert=False):
+        self.rpwm = PWMOutputDevice(rpwm)
+        self.lpwm = PWMOutputDevice(lpwm)
+        self._value = 0.0
+        self.invert = invert
+
+    def forward(self, speed):
+        speed = float(speed)
+        if self.invert:
+            self.rpwm.value = 0.0
+            self.lpwm.value = speed
+        else:
+            self.rpwm.value = speed
+            self.lpwm.value = 0.0
+        self._value = speed if not self.invert else -speed
+
+    def backward(self, speed):
+        speed = float(speed)
+        if self.invert:
+            self.rpwm.value = speed
+            self.lpwm.value = 0.0
+        else:
+            self.rpwm.value = 0.0
+            self.lpwm.value = speed
+        self._value = -speed if not self.invert else speed
+
+    def stop(self):
+        self.rpwm.value = 0.0
+        self.lpwm.value = 0.0
+        self._value = 0.0
+
+    def close(self):
+        self.rpwm.close()
+        self.lpwm.close()
+
+    @property
+    def is_active(self):
+        return self.rpwm.value > 0 or self.lpwm.value > 0
 
     @property
     def value(self):
@@ -117,6 +179,7 @@ def log_msg(msg):
 # --- Catalog & Configuration ---
 CATALOG = {
     "motor": {"default_name": "Motor", "pins": ["forward", "backward", "enable"]},
+    "bts7960": {"default_name": "BTS7960 Motor", "pins": ["rpwm", "lpwm"]},
     "hcsr04": {"default_name": "HC-SR04 Sensor", "pins": ["trigger", "echo"]}
 }
 
@@ -176,20 +239,23 @@ def init_peripherals():
             dtype = dev.get("type")
             pins = dev.get("pins", {})
             p_obj = None
-            
+
             if dtype == "motor":
                 invert_flag = dev.get("invert", False)
-                p_obj = CustomMotor(forward=pins["forward"], backward=pins["backward"], enable=pins["enable"], invert=invert_flag)
+                p_obj = CustomMotor(forward=pins["forward"], backward=pins["backward"], enable=pins.get("enable", 0), invert=invert_flag)
+            elif dtype == "bts7960":
+                invert_flag = dev.get("invert", False)
+                p_obj = BTS7960Motor(rpwm=pins["rpwm"], lpwm=pins["lpwm"], invert=invert_flag)
             elif dtype == "hcsr04":
                 p_obj = DistanceSensor(trigger=pins["trigger"], echo=pins["echo"])
-            
+
             if p_obj:
                 peripherals[dev["id"]] = p_obj
                 if dev.get("role"):
                     peripherals[dev["role"]] = p_obj
-                log_msg(f"Peripheral initialized: {dev['name']} ({dev['id']})")
+                log_msg(f"Peripheral initialized: {dev['name']} ({dev['id']}) type={dtype}")
         except Exception as e:
-            log_msg(f"Error initializing device {dev.get('name')}: {e}")
+            log_msg(f"Error initializing device {dev.get('name')} (type={dev.get('type')}): {e}")
 
 init_peripherals()
 
@@ -681,9 +747,13 @@ HTML_TEMPLATE = """
                         <div data-t="m_left">Левый мотор</div>
                         <div class="motor-pins">
                             {% if m_left %}
-                                <span data-t="pin_fwd">Fwd</span>:{{ m_left.pins.forward }}, 
-                                <span data-t="pin_bwd">Bwd</span>:{{ m_left.pins.backward }}, 
-                                <span data-t="pin_spd">Spd</span>:{{ m_left.pins.enable }}
+                                {% if m_left.type == 'bts7960' %}
+                                    RPWM:{{ m_left.pins.rpwm }}, LPWM:{{ m_left.pins.lpwm }}, EN:5V
+                                {% else %}
+                                    <span data-t="pin_fwd">Fwd</span>:{{ m_left.pins.forward }},
+                                    <span data-t="pin_bwd">Bwd</span>:{{ m_left.pins.backward }},
+                                    <span data-t="pin_spd">EN</span>:{{ m_left.pins.enable or '--' }}
+                                {% endif %}
                             {% else %}
                                 <span style="color:red">Role move_left not assigned</span>
                             {% endif %}
@@ -693,9 +763,13 @@ HTML_TEMPLATE = """
                         <div data-t="m_right">Правый мотор</div>
                         <div class="motor-pins">
                             {% if m_right %}
-                                <span data-t="pin_fwd">Fwd</span>:{{ m_right.pins.forward }}, 
-                                <span data-t="pin_bwd">Bwd</span>:{{ m_right.pins.backward }}, 
-                                <span data-t="pin_spd">Spd</span>:{{ m_right.pins.enable }}
+                                {% if m_right.type == 'bts7960' %}
+                                    RPWM:{{ m_right.pins.rpwm }}, LPWM:{{ m_right.pins.lpwm }}, EN:5V
+                                {% else %}
+                                    <span data-t="pin_fwd">Fwd</span>:{{ m_right.pins.forward }},
+                                    <span data-t="pin_bwd">Bwd</span>:{{ m_right.pins.backward }},
+                                    <span data-t="pin_spd">EN</span>:{{ m_right.pins.enable or '--' }}
+                                {% endif %}
                             {% else %}
                                 <span style="color:red">Role move_right not assigned</span>
                             {% endif %}
@@ -735,8 +809,30 @@ HTML_TEMPLATE = """
                         <input type="number" class="config-input" data-pin="backward" value="{{ dev.pins.backward }}">
                     </div>
                     <div class="config-row">
-                        <span class="config-label" data-t="pin_spd">Скорость</span>
-                        <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable if dev.pins.enable else '' }}">
+                        <span class="config-label" data-t="pin_spd">Скорость (EN)</span>
+                        <input type="number" class="config-input" data-pin="enable" value="{{ dev.pins.enable if dev.pins.enable else '' }}" placeholder="(опционально)">
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_role">Роль</span>
+                        <select class="config-role">
+                            <option value="">Нет (None)</option>
+                            <option value="move_left" {% if dev.role == 'move_left' %}selected{% endif %}>Левый мотор</option>
+                            <option value="move_right" {% if dev.role == 'move_right' %}selected{% endif %}>Правый мотор</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label" data-t="pin_invert">Инверсия</span>
+                        <input type="checkbox" class="config-invert-input" {% if dev.invert %}checked{% endif %}>
+                    </div>
+                    {% elif dev.type == 'bts7960' %}
+                    <div style="font-size:0.72rem;color:#0097a7;font-weight:bold;margin-bottom:8px;">🔧 BTS7960 — RPWM/LPWM режим</div>
+                    <div class="config-row">
+                        <span class="config-label">RPWM (Вперёд)</span>
+                        <input type="number" class="config-input" data-pin="rpwm" value="{{ dev.pins.rpwm }}">
+                    </div>
+                    <div class="config-row">
+                        <span class="config-label">LPWM (Назад)</span>
+                        <input type="number" class="config-input" data-pin="lpwm" value="{{ dev.pins.lpwm }}">
                     </div>
                     <div class="config-row">
                         <span class="config-label" data-t="pin_role">Роль</span>
@@ -768,7 +864,8 @@ HTML_TEMPLATE = """
 
             <div class="add-device-section">
                 <select id="catalogSelect" class="catalog-select">
-                    <option value="motor">New Motor</option>
+                    <option value="motor">New Motor (L298N/обычный)</option>
+                    <option value="bts7960">New BTS7960 Motor</option>
                     <option value="hcsr04">New HC-SR04 Sensor</option>
                 </select>
                 <button class="btn-add" onclick="addDevice()">+ Add Device</button>
@@ -1044,32 +1141,38 @@ HTML_TEMPLATE = """
         function addDevice() {
             const type = document.getElementById('catalogSelect').value;
             const id = "dev_" + Math.random().toString(36).substr(2, 5);
-            const name = type === 'motor' ? 'New Motor' : 'New Sensor';
-            
+            const nameMap = { motor: 'New Motor', bts7960: 'New BTS7960 Motor', hcsr04: 'New Sensor' };
+            const name = nameMap[type] || 'New Device';
+
             const grid = document.getElementById('configGrid');
             const card = document.createElement('div');
             card.className = "config-card";
             card.dataset.id = id;
             card.dataset.type = type;
 
+            const roleOptions = `
+                <select class="config-role">
+                    <option value="">Нет (None)</option>
+                    <option value="move_left">Левый мотор</option>
+                    <option value="move_right">Правый мотор</option>
+                </select>`;
+
             let pinsHtml = "";
             if (type === 'motor') {
                 pinsHtml = `
-                    <div class="config-row"><span class="config-label" data-t="pin_fwd">Fwd</span><input type="number" class="config-input" data-pin="forward" value="0"></div>
-                    <div class="config-row"><span class="config-label" data-t="pin_bwd">Bwd</span><input type="number" class="config-input" data-pin="backward" value="0"></div>
-                    <div class="config-row"><span class="config-label" data-t="pin_spd">Spd</span><input type="number" class="config-input" data-pin="enable" value="0"></div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_role">Role</span>
-                        <select class="config-role">
-                            <option value="">None</option>
-                            <option value="move_left">Left Motor</option>
-                            <option value="move_right">Right Motor</option>
-                        </select>
-                    </div>
-                    <div class="config-row">
-                        <span class="config-label" data-t="pin_invert">Invert</span>
-                        <input type="checkbox" class="config-invert-input">
-                    </div>
+                    <div class="config-row"><span class="config-label">Вперед</span><input type="number" class="config-input" data-pin="forward" value="0"></div>
+                    <div class="config-row"><span class="config-label">Назад</span><input type="number" class="config-input" data-pin="backward" value="0"></div>
+                    <div class="config-row"><span class="config-label">Скорость (EN)</span><input type="number" class="config-input" data-pin="enable" value="" placeholder="(опционально)"></div>
+                    <div class="config-row"><span class="config-label">Роль</span>${roleOptions}</div>
+                    <div class="config-row"><span class="config-label">Инверсия</span><input type="checkbox" class="config-invert-input"></div>
+                `;
+            } else if (type === 'bts7960') {
+                pinsHtml = `
+                    <div style="font-size:0.72rem;color:#0097a7;font-weight:bold;margin-bottom:8px;">🔧 BTS7960 — RPWM/LPWM режим</div>
+                    <div class="config-row"><span class="config-label">RPWM (Вперёд)</span><input type="number" class="config-input" data-pin="rpwm" value="0"></div>
+                    <div class="config-row"><span class="config-label">LPWM (Назад)</span><input type="number" class="config-input" data-pin="lpwm" value="0"></div>
+                    <div class="config-row"><span class="config-label">Роль</span>${roleOptions}</div>
+                    <div class="config-row"><span class="config-label">Инверсия</span><input type="checkbox" class="config-invert-input"></div>
                 `;
             } else {
                 pinsHtml = `
@@ -1127,10 +1230,16 @@ HTML_TEMPLATE = """
                     pins: {}
                 };
                 card.querySelectorAll('.config-input').forEach(input => {
-                    const val = input.value;
-                    dev.pins[input.dataset.pin] = val ? parseInt(val) : 0;
+                    const pin = input.dataset.pin;
+                    const val = input.value.trim();
+                    // For 'enable' pin: empty means "not connected" -> store null
+                    if (pin === 'enable') {
+                        dev.pins[pin] = val ? parseInt(val) : null;
+                    } else {
+                        dev.pins[pin] = val ? parseInt(val) : 0;
+                    }
                 });
-                
+
                 // Read role from dropdown if it exists
                 const roleSelect = card.querySelector('.config-role');
                 if (roleSelect && roleSelect.value) {

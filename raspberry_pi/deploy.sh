@@ -44,6 +44,9 @@ fi
 echo "Fix permissions..."
 chmod +x "$APP_DIR"/*.sh 2>/dev/null || true
 
+echo "Removing config.json (will be re-created with defaults on next start)..."
+rm -f "$APP_DIR/config.json"
+
 echo "Restarting service in background..."
 # Use systemd-run to detach the restart command from the current process tree
 # This prevents systemd from killing this script when the service stops

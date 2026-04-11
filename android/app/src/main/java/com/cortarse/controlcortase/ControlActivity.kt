@@ -255,23 +255,49 @@ class ControlActivity : AppCompatActivity() {
                 val role = dev.optString("role")
                 val pins = dev.optJSONObject("pins") ?: continue
 
-                if (type == "motor") {
-                    val invert = dev.optBoolean("invert", false)
-                    val invertText = if (invert) "Yes" else "No"
-                    val invertColor = if (invert) android.graphics.Color.parseColor("#E53935") else getColor(R.color.colorPrimary)
+                val invert = dev.optBoolean("invert", false)
+                val invertText = if (invert) "Yes" else "No"
+                val invertColor = if (invert) android.graphics.Color.parseColor("#E53935") else getColor(R.color.colorPrimary)
 
-                    if (role == "move_left") {
-                        tvM1Fwd.text = pins.optInt("forward").toString()
-                        tvM1Bwd.text = pins.optInt("backward").toString()
-                        tvM1En.text = pins.optInt("enable").let { if (it > 0) it.toString() else "--" }
-                        tvM1Inv.text = invertText
-                        tvM1Inv.setTextColor(invertColor)
-                    } else if (role == "move_right") {
-                        tvM2Fwd.text = pins.optInt("forward").toString()
-                        tvM2Bwd.text = pins.optInt("backward").toString()
-                        tvM2En.text = pins.optInt("enable").let { if (it > 0) it.toString() else "--" }
-                        tvM2Inv.text = invertText
-                        tvM2Inv.setTextColor(invertColor)
+                when (type) {
+                    "motor" -> {
+                        val fwd = pins.optInt("forward", 0).toString()
+                        val bwd = pins.optInt("backward", 0).toString()
+                        val enVal = if (!pins.isNull("enable")) pins.optInt("enable", 0) else 0
+                        val en = if (enVal > 0) enVal.toString() else "--"
+
+                        if (role == "move_left") {
+                            tvM1Fwd.text = fwd
+                            tvM1Bwd.text = bwd
+                            tvM1En.text = en
+                            tvM1Inv.text = invertText
+                            tvM1Inv.setTextColor(invertColor)
+                        } else if (role == "move_right") {
+                            tvM2Fwd.text = fwd
+                            tvM2Bwd.text = bwd
+                            tvM2En.text = en
+                            tvM2Inv.text = invertText
+                            tvM2Inv.setTextColor(invertColor)
+                        }
+                    }
+                    "bts7960" -> {
+                        // BTS7960: RPWM = forward direction, LPWM = backward direction
+                        val rpwm = pins.optInt("rpwm", 0).toString()
+                        val lpwm = pins.optInt("lpwm", 0).toString()
+
+                        if (role == "move_left") {
+                            tvM1Fwd.text = "R:$rpwm"
+                            tvM1Bwd.text = "L:$lpwm"
+                            tvM1En.text = "5V" // R_EN/L_EN hardwired
+                            tvM1Inv.text = invertText
+                            tvM1Inv.setTextColor(invertColor)
+                        } else if (role == "move_right") {
+                            tvM2Fwd.text = "R:$rpwm"
+                            tvM2Bwd.text = "L:$lpwm"
+                            tvM2En.text = "5V"
+                            tvM2Inv.text = invertText
+                            tvM2Inv.setTextColor(invertColor)
+                        }
                     }
                 }
             }
